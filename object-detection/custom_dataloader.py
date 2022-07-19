@@ -126,7 +126,7 @@ def get_transform(train):
     return T.Compose(transforms)
 
 def get_dataset():
-    dataset = CustomDataloader('../../dataset/train', get_transform(train=True))
-    dataset_test = CustomDataloader('../../dataset/test', get_transform(train=False))
+    dataset = CustomDataloader('../dataset/train', get_transform(train=True))
+    dataset_test = CustomDataloader('../dataset/test', get_transform(train=False))
     return dataset, dataset_test
 
