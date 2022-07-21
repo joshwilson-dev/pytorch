@@ -183,7 +183,11 @@ def main(args):
 
     # Josh Wilson additions 01/07/2021
     if args.customdataloader == 1:
-        dataset, dataset_test = custom_dataloader.get_dataset()
+        dataset_transformed, dataset_original = custom_dataloader.get_dataset()
+        train_size = int(0.85 * len(dataset_transformed))
+        test_size = len(dataset_transformed) - train_size
+        dataset, _ = torch.utils.data.random_split(dataset_transformed, [train_size, test_size])
+        _, dataset_test = torch.utils.data.random_split(dataset_original, [train_size, test_size])
     else:
 
         dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path)

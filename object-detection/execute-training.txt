@@ -1,2 +1,2 @@
 python train.py --device cuda --batch-size 5 --lr 0.005 --lr-steps 2 10 15 20 25 --lr-gamma 0.05 --epochs 4 --print-freq 20 --output-dir ../model/temp --start_epoch 0 --customdataloader 1 --evalepoch 2 --modelsave 25
-python train.py --device cuda --batch-size 5 --epochs 4 --print-freq 20 --output-dir ../model/temp --start_epoch 0 --customdataloader 1 --evalepoch 2 --modelsave 25
+python train.py --device cuda --batch-size 5 --epochs 4 --lr-steps 1 2 3 --print-freq 20 --output-dir ../model/temp --start_epoch 0 --customdataloader 1 --evalepoch 1 --modelsave 1

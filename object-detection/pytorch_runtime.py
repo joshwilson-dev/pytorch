@@ -6,15 +6,56 @@ import numpy as np
 from matplotlib import pyplot as plt
 import os
 import importlib
+import utils
+
+# idx_to_class = {
+#     1: "fertilised",
+#     2: "unfertilised"
+# }
+
+# idx_to_colour = {
+#     1: "orange",
+#     2: "blue"
+# }
 
 idx_to_class = {
-    1: "fertilised",
-    2: "unfertilised"
+    1: "masked lapwing",
+    2: "silver gull",
+    3: "black swan",
+    4: "bar-tailed godwit",
+    5: "gull-billed tern",
+    6: "australian white ibis",
+    7: "pacific black duck",
+    8: "australian wood duck",
+    9: "great knot",
+    10: "torresian crow",
+    11: "australasian swamphen",
+    12: "hardhead",
+    13: "pied stilt",
+    14: "muscovy duck",
+    15: "australian pelican",
+    16: "royal spoonbill",
+    17: "pied oystercatcher"
 }
 
 idx_to_colour = {
     1: "orange",
-    2: "blue"
+    2: "blue",
+    3: "green",
+    4: "purple",
+    5: "yellow",
+    6: "black",
+    7: "white",
+    8: "red",
+    9: "brown",
+    10: "gold",
+    11: "pink",
+    12: "grey",
+    13: "slateblue",
+    14: "cyan",
+    15: "lime",
+    16: "maroon",
+    17: "peru"
 }
 
 def prepare_image(image_path):
@@ -58,6 +99,11 @@ model_path = "../model/temp/model_final_state_dict.pth"
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 model = model.to(device)
-prediction_1 = draw_boxes("../dataset/test_full/OFF_011_C.JPG", model)
-# prediction_1 = draw_boxes("../dataset/test/0a259b562b59aaeb192d61734edaae1f.JPG", model)
+prediction_1 = draw_boxes("../dataset/bird-detector/test/Picture4.jpg", model)
 prediction_1
+
+# for converting checkpoint
+# model_path = "../model/temp/model_2.pth"
+# checkpoint = torch.load(model_path, map_location="cpu")
+# model.load_state_dict(checkpoint["model"])
+# utils.save_on_master(model.state_dict(), "../model/temp/model_final_state_dict.pth")

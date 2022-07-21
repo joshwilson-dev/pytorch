@@ -66,7 +66,8 @@ class CustomDataloader(torch.utils.data.Dataset):
         return len(self.file_names) - 1
 
 class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
-    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 3):
+    # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 3): # seed detector
+    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 18): # bird detector
         trainable_backbone_layers = _validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
         backbone = resnet_fpn_backbone('resnet101', pretrained_backbone, trainable_layers=trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(1024, num_classes)
@@ -96,7 +97,7 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             'rpn_post_nms_top_n_train': 2000,
             'rpn_post_nms_top_n_test': 2000,
             # 'rpn_nms_thresh': 1.0, # onnx export
-            # 'rpn_nms_thresh': 0.5, # Test
+            # 'rpn_nms_thresh': 0.1, # Test
             # 'rpn_fg_iou_thresh': 0.7,
             # 'rpn_bg_iou_thresh': 0.3,
             'rpn_batch_size_per_image': 2000,
@@ -105,7 +106,7 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             # 'box_roi_pool': roi_pooler,
             # 'box_head': None,
             'box_predictor': box_predictor,
-            'box_score_thresh': 0.5, # Test
+            'box_score_thresh': 0.6, # Test
             # 'box_score_thresh': 0.0, # onnx export
             'box_nms_thresh': 0.1, # Test
             # 'box_nms_thresh': 1.0, # onnx export
@@ -127,7 +128,7 @@ def get_transform(train):
     return T.Compose(transforms)
 
 def get_dataset():
-    dataset = CustomDataloader('../dataset/train', get_transform(train=True))
-    dataset_test = CustomDataloader('../dataset/test', get_transform(train=False))
+    dataset = CustomDataloader('../dataset/bird-detector/train', get_transform(train=True))
+    dataset_test = CustomDataloader('../dataset/bird-detector/train', get_transform(train=False))
     return dataset, dataset_test
 
