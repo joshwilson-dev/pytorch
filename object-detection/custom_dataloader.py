@@ -70,7 +70,8 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
         trainable_backbone_layers = _validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
         backbone = resnet_fpn_backbone('resnet101', pretrained_backbone, trainable_layers=trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(1024, num_classes)
-        anchor_sizes = ((100,), (100,), (100,), (100,), (100,))
+        # anchor_sizes = ((100,), (100,), (100,), (100,), (100,))
+        anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
         aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
         rpn_anchor_generator = torchvision.models.detection.rpn.AnchorGenerator(anchor_sizes, aspect_ratios)
         parameters = {
@@ -88,14 +89,14 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             # 'max_size': 6000,
             # 'image_mean': None,
             # 'image_std': None,
-            'rpn_anchor_generator': rpn_anchor_generator,
+            # 'rpn_anchor_generator': rpn_anchor_generator,
             # 'rpn_head': None,
             'rpn_pre_nms_top_n_train': 2000,
             'rpn_pre_nms_top_n_test': 2000,
             'rpn_post_nms_top_n_train': 2000,
             'rpn_post_nms_top_n_test': 2000,
             # 'rpn_nms_thresh': 1.0, # onnx export
-            'rpn_nms_thresh': 0.5, # Test
+            # 'rpn_nms_thresh': 0.5, # Test
             # 'rpn_fg_iou_thresh': 0.7,
             # 'rpn_bg_iou_thresh': 0.3,
             'rpn_batch_size_per_image': 2000,

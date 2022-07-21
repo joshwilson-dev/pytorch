@@ -106,7 +106,8 @@ def _compute_aspect_ratios_slow(dataset, indices=None):
         batch_size=1,
         sampler=sampler,
         num_workers=14,  # you might want to increase it for faster processing
-        collate_fn=lambda x: x[0],
+        # collate_fn=lambda x: x[0],
+        collate_fn= collate
     )
     aspect_ratios = []
     with tqdm(total=len(dataset)) as pbar:
@@ -117,6 +118,7 @@ def _compute_aspect_ratios_slow(dataset, indices=None):
             aspect_ratios.append(aspect_ratio)
     return aspect_ratios
 
+def collate(x): return x[0]
 
 def _compute_aspect_ratios_custom_dataset(dataset, indices=None):
     if indices is None:

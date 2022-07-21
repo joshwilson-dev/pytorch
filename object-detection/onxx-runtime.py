@@ -6,8 +6,7 @@ import os
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-ort_session = onnxruntime.InferenceSession("models/model1/model_final_state_dict.onnx")
-# ort_session = onnxruntime.InferenceSession("models/model1/model_final_state_dict_nms.onnx")
+ort_session = onnxruntime.InferenceSession("../model/seed-detector/model_final_state_dict.onnx")
 
 idx_to_class = {
     1: "fertilised",
@@ -55,4 +54,4 @@ def make_prediction(image_path):
     visualise = draw_boxes(image = CHW_image, boxes = boxes, labels = named_labels_with_scores, colours = colours, width=5)
     show(visualise)
 
-make_prediction("../dataset/trial/0adddc65d9ea2ce40b48a0442b63875d.JPG")
+make_prediction("../dataset/test/0a259b562b59aaeb192d61734edaae1f.JPG")

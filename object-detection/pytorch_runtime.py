@@ -50,14 +50,14 @@ def draw_boxes(image_path, model):
     visualise = torchvision.utils.draw_bounding_boxes(image = image, boxes = image_boxes, labels = named_labels_with_scores, font_size = 15, width=5, colors = colours)
     show(visualise)
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-print(os.getcwd())
-device = torch.device("cpu")
+device = torch.device("cuda")
+# device = torch.device("cpu")
 importlib.reload(custom_dataloader)
 model = custom_dataloader.FRCNNObjectDetector()
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
 model_path = "../model/temp/model_final_state_dict.pth"
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 model = model.to(device)
-prediction_1 = draw_boxes("../dataset/test_full/OFF_012_A.JPG", model)
+prediction_1 = draw_boxes("../dataset/test_full/OFF_011_C.JPG", model)
+# prediction_1 = draw_boxes("../dataset/test/0a259b562b59aaeb192d61734edaae1f.JPG", model)
 prediction_1
