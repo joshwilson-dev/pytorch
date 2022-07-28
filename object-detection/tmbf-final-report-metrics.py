@@ -9,7 +9,6 @@ label_id_to_name = {}
 ann = []
 
 for category in annotations['categories']:
-    # print(category['name'])
     label_id_to_name[category['id']] = category['name']
 
 for annotation in annotations['annotations']:  

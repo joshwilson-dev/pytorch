@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 import os
 import importlib
 import utils
+importlib.reload(custom_dataloader)
 
 # idx_to_class = {
 #     1: "fertilised",
@@ -19,44 +20,52 @@ import utils
 # }
 
 idx_to_class = {
-    1: "masked lapwing",
-    2: "silver gull",
-    3: "black swan",
-    4: "bar-tailed godwit",
-    5: "gull-billed tern",
-    6: "australian white ibis",
-    7: "pacific black duck",
-    8: "australian wood duck",
-    9: "great knot",
-    10: "torresian crow",
-    11: "australasian swamphen",
-    12: "hardhead",
-    13: "pied stilt",
-    14: "muscovy duck",
-    15: "australian pelican",
-    16: "royal spoonbill",
-    17: "pied oystercatcher"
+    1: "bird"
 }
 
 idx_to_colour = {
-    1: "orange",
-    2: "blue",
-    3: "green",
-    4: "purple",
-    5: "yellow",
-    6: "black",
-    7: "white",
-    8: "red",
-    9: "brown",
-    10: "gold",
-    11: "pink",
-    12: "grey",
-    13: "slateblue",
-    14: "cyan",
-    15: "lime",
-    16: "maroon",
-    17: "peru"
+    1: "orange"
 }
+
+# idx_to_class = {
+#     1: "masked lapwing",
+#     2: "silver gull",
+#     3: "black swan",
+#     4: "bar-tailed godwit",
+#     5: "gull-billed tern",
+#     6: "australian white ibis",
+#     7: "pacific black duck",
+#     8: "australian wood duck",
+#     9: "great knot",
+#     10: "torresian crow",
+#     11: "australasian swamphen",
+#     12: "hardhead",
+#     13: "pied stilt",
+#     14: "muscovy duck",
+#     15: "australian pelican",
+#     16: "royal spoonbill",
+#     17: "pied oystercatcher"
+# }
+
+# idx_to_colour = {
+#     1: "maroon",
+#     2: "blue",
+#     3: "black",
+#     4: "purple",
+#     5: "yellow",
+#     6: "orange",
+#     7: "white",
+#     8: "red",
+#     9: "brown",
+#     10: "gold",
+#     11: "pink",
+#     12: "grey",
+#     13: "slateblue",
+#     14: "cyan",
+#     15: "lime",
+#     16: "green",
+#     17: "peru"
+# }
 
 def prepare_image(image_path):
     image = PIL.Image.open(image_path).convert('RGB')
@@ -88,18 +97,18 @@ def draw_boxes(image_path, model):
     named_labels = [idx_to_class[i] for i in labels]
     colours = [idx_to_colour[i] for i in labels]
     named_labels_with_scores = [named_labels[i] + ": " + string_scores[i] for i in range(len(scores))]
-    visualise = torchvision.utils.draw_bounding_boxes(image = image, boxes = image_boxes, labels = named_labels_with_scores, font_size = 15, width=5, colors = colours)
+    visualise = torchvision.utils.draw_bounding_boxes(image = image, boxes = image_boxes, labels = named_labels_with_scores, font = "../model/bird-species-detector/BKANT.TTF", font_size = 30, width=5, colors = colours)
     show(visualise)
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-device = torch.device("cuda")
-# device = torch.device("cpu")
-importlib.reload(custom_dataloader)
+# device = torch.device("cuda")
+device = torch.device("cpu")
 model = custom_dataloader.FRCNNObjectDetector()
-model_path = "../model/temp/model_final_state_dict.pth"
+print(os.getcwd())
+model_path = "../model/bird-detector/model_final_state_dict.pth"
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 model = model.to(device)
-prediction_1 = draw_boxes("../dataset/bird-detector/test/Picture4.jpg", model)
+prediction_1 = draw_boxes("../dataset/bird-detector/test/test-8.jpg", model)
 prediction_1
 
 # for converting checkpoint

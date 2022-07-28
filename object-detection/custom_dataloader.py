@@ -27,7 +27,8 @@ class CustomDataloader(torch.utils.data.Dataset):
             self.iscrowds.append(annotations['iscrowd'])
             self.image_ids.append(annotations['image_id'])
             self.bboxes.append(annotations['bbox'])
-            self.category_ids.append(annotations['category_id'])
+            # self.category_ids.append(annotations['category_id'])  # bird species
+            self.category_ids.append(1) # birds
             self.area.append(annotations['area'])
         
     def __getitem__(self, index):
@@ -67,7 +68,8 @@ class CustomDataloader(torch.utils.data.Dataset):
 
 class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
     # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 3): # seed detector
-    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 18): # bird detector
+    # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 18): # bird species detector
+    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 2): # bird detector
         trainable_backbone_layers = _validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
         backbone = resnet_fpn_backbone('resnet101', pretrained_backbone, trainable_layers=trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(1024, num_classes)
@@ -92,28 +94,28 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             # 'image_std': None,
             # 'rpn_anchor_generator': rpn_anchor_generator,
             # 'rpn_head': None,
-            'rpn_pre_nms_top_n_train': 2000,
-            'rpn_pre_nms_top_n_test': 2000,
-            'rpn_post_nms_top_n_train': 2000,
-            'rpn_post_nms_top_n_test': 2000,
-            # 'rpn_nms_thresh': 1.0, # onnx export
+            # 'rpn_pre_nms_top_n_train': 2000,
+            # 'rpn_pre_nms_top_n_test': 2000,
+            # 'rpn_post_nms_top_n_train': 2000,
+            # 'rpn_post_nms_top_n_test': 2000,
+            'rpn_nms_thresh': 1.0, # onnx export
             # 'rpn_nms_thresh': 0.1, # Test
             # 'rpn_fg_iou_thresh': 0.7,
             # 'rpn_bg_iou_thresh': 0.3,
-            'rpn_batch_size_per_image': 2000,
+            # 'rpn_batch_size_per_image': 2000,
             # 'rpn_positive_fraction': 0.5,
             # 'rpn_score_thresh': 0.0, # Test
             # 'box_roi_pool': roi_pooler,
             # 'box_head': None,
             'box_predictor': box_predictor,
-            'box_score_thresh': 0.6, # Test
-            # 'box_score_thresh': 0.0, # onnx export
-            'box_nms_thresh': 0.1, # Test
+            # 'box_score_thresh': 0.6, # Test
+            'box_score_thresh': 0.8, # onnx export
+            'box_nms_thresh': 0.5, # Test
             # 'box_nms_thresh': 1.0, # onnx export
-            'box_detections_per_img': 2000,
+            'box_detections_per_img': 100,
             # 'box_fg_iou_thresh': 0.5,
             # 'box_bg_iou_thresh': 0.3,
-            'box_batch_size_per_image': 2000
+            # 'box_batch_size_per_image': 2000
             # 'box_positive_fraction': 0.25,
             # 'bbox_reg_weights': None
             }
