@@ -67,9 +67,9 @@ class CustomDataloader(torch.utils.data.Dataset):
         return len(self.file_names) - 1
 
 class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
-    # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 3): # seed detector
+    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 3): # seed detector
     # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 18): # bird species detector
-    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 2): # bird detector
+    # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 2): # bird detector
         trainable_backbone_layers = _validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
         backbone = resnet_fpn_backbone('resnet101', pretrained_backbone, trainable_layers=trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(1024, num_classes)
@@ -130,7 +130,7 @@ def get_transform(train):
     return T.Compose(transforms)
 
 def get_dataset():
-    dataset = CustomDataloader('../dataset/bird-detector/train', get_transform(train=True))
-    dataset_test = CustomDataloader('../dataset/bird-detector/train', get_transform(train=False))
+    dataset = CustomDataloader('../dataset/seed-detector/train', get_transform(train=True))
+    dataset_test = CustomDataloader('../dataset/seed-detector/train', get_transform(train=False))
     return dataset, dataset_test
 
