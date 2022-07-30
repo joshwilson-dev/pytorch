@@ -107,7 +107,7 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             # 'box_roi_pool': roi_pooler,
             # 'box_head': None,
             'box_predictor': box_predictor,
-            'box_score_thresh': 0.1, # Test
+            'box_score_thresh': 0.3, # Test
             'box_nms_thresh': 0.1, # Test
             'box_detections_per_img': 20000,
             # 'box_fg_iou_thresh': 0.5,

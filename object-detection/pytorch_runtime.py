@@ -109,7 +109,7 @@ model_path = "./models/bird-species-detector/model_final_state_dict.pth"
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 model = model.to(device)
-prediction_1 = draw_boxes("../dataset/bird-species-detector/test/Picture5.jpg", model)
+prediction_1 = draw_boxes("../dataset/bird-species-detector/test/test-6.jpg", model)
 prediction_1
 
 # for converting checkpoint

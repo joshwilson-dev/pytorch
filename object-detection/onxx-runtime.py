@@ -6,16 +6,57 @@ import os
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-ort_session = onnxruntime.InferenceSession("../model/seed-detector/model_final_state_dict.onnx")
+# ort_session = onnxruntime.InferenceSession("./models/seed-detector/model_final_state_dict.onnx")
+ort_session = onnxruntime.InferenceSession("./models/bird-species-detector/model_final_state_dict.onnx")
+
+# idx_to_class = {
+#     1: "fertilised",
+#     2: "unfertilised"
+# }
+
+# idx_to_colour = {
+#     1: "orange",
+#     2: "blue"
+# }
 
 idx_to_class = {
-    1: "fertilised",
-    2: "unfertilised"
+    1: "masked lapwing",
+    2: "silver gull",
+    3: "black swan",
+    4: "bar-tailed godwit",
+    5: "gull-billed tern",
+    6: "australian white ibis",
+    7: "pacific black duck",
+    8: "australian wood duck",
+    9: "great knot",
+    10: "torresian crow",
+    11: "australasian swamphen",
+    12: "hardhead",
+    13: "pied stilt",
+    14: "muscovy duck",
+    15: "australian pelican",
+    16: "royal spoonbill",
+    17: "pied oystercatcher"
 }
 
 idx_to_colour = {
-    1: "orange",
-    2: "blue"
+    1: "maroon",
+    2: "blue",
+    3: "black",
+    4: "purple",
+    5: "yellow",
+    6: "orange",
+    7: "white",
+    8: "red",
+    9: "brown",
+    10: "gold",
+    11: "pink",
+    12: "grey",
+    13: "slateblue",
+    14: "cyan",
+    15: "lime",
+    16: "green",
+    17: "peru"
 }
 
 def prepare_image(image_path):
@@ -54,4 +95,4 @@ def make_prediction(image_path):
     visualise = draw_boxes(image = CHW_image, boxes = boxes, labels = named_labels_with_scores, colours = colours, width=5)
     show(visualise)
 
-make_prediction("../dataset/test/0a259b562b59aaeb192d61734edaae1f.JPG")
+make_prediction("../dataset/bird-species-detector/test/test-1.JPG")
