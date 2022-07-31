@@ -48,12 +48,13 @@ if len(file_path_variable) > 0:
     # confirm dir with user
     check = messagebox.askquestion(
         "CONFIRM",
-        "Are you sure you want to create a image classification dataset from the files in:\n" + file_path_variable)
+        "Are you sure you want to create an hierarchical image classification dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
         # walk through image files and crop
         for file in os.listdir():
-            if file.endswith(".json"):
+            if file.endswith(".json") and file != "dataset.json":
+                print("Creating hierarchcial classifier data for", file)
                 # read annotation file
                 annotation_file = open(file)
                 image_file = os.path.splitext(file)[0] + '.JPG'
@@ -79,33 +80,37 @@ if len(file_path_variable) > 0:
                     # get image exif
                     exif_dict = piexif.load(image.info["exif"])
                     exif_bytes = piexif.dump(exif_dict)
+                    #TODO update exif image size
 
                     # copy instance and annotation into relveant hierarchy dir
                     label = annotations["shapes"][index1]["label"]
-                    levels = label.split('-') 
+                    levels = label.split('-')
                     for index2 in range(1, len(levels)):
                         level_dir = levels[index2]
-                        if level_dir != "unknown":
-                            x = index2
-                            while x > 1:
-                                level_dir = os.path.join(levels[x - 1], level_dir)
-                                x += -1
-                            if not os.path.exists(level_dir):
-                                os.makedirs(level_dir)
-                            # save instance to top level, we only need annotation file
-                            # in each hierarchical dirs, not actual images
-                            if index2 == 1:
-                                instance.save(os.path.join(level_dir, image_name), exif = exif_bytes)
-                            # check if annotation file already exists otherwise create it
-                            dataset_path = os.path.join(level_dir, "dataset.json")
-                            if not os.path.exists(dataset_path):
-                                instance_annotations = {"images": [], "labels": []}
-                            else:
-                                with open(dataset_path, 'r') as instance_annotation_file:
-                                    instance_annotations = json.load(instance_annotation_file)
-                            # add new annotation to annotation file
-                            instance_annotations["images"].append(os.path.join("../" * (index2 - 1), image_name))
-                            instance_annotations["labels"].append(levels[index2])
-                            instance_annotations = json.dumps(instance_annotations, indent=2)
-                            with open(dataset_path, "w") as instance_annotation_file:
-                                instance_annotation_file.write(instance_annotations)
+                        # no need for a classifier of the last level
+                        if index2 != len(levels) - 1:
+                            # don't include if we don't know
+                            if levels[index2 + 1] != "unknown":
+                                x = index2
+                                while x > 1:
+                                    level_dir = os.path.join(levels[x - 1], level_dir)
+                                    x += -1
+                                if not os.path.exists(level_dir):
+                                    os.makedirs(level_dir)
+                                # save instance to top level, we only need annotation file
+                                # in each hierarchical dirs, not actual images
+                                if index2 == 1:
+                                    instance.save(os.path.join(level_dir, image_name), exif = exif_bytes)
+                                # check if annotation file already exists otherwise create it
+                                dataset_path = os.path.join(level_dir, "dataset.json")
+                                if not os.path.exists(dataset_path):
+                                    instance_annotations = {"images": [], "labels": []}
+                                else:
+                                    with open(dataset_path, 'r') as instance_annotation_file:
+                                        instance_annotations = json.load(instance_annotation_file)
+                                # add new annotation to annotation file
+                                instance_annotations["images"].append(os.path.join("../" * (index2 - 1), image_name))
+                                instance_annotations["labels"].append(levels[index2 + 1])
+                                instance_annotations = json.dumps(instance_annotations, indent=2)
+                                with open(dataset_path, "w") as instance_annotation_file:
+                                    instance_annotation_file.write(instance_annotations)
