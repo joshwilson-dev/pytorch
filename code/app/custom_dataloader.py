@@ -127,7 +127,7 @@ def get_transform(train):
     return T.Compose(transforms)
 
 def get_dataset():
-    dataset = CustomDataloader('../dataset/seed-detector/train', get_transform(train=True))
-    dataset_test = CustomDataloader('../dataset/seed-detector/train', get_transform(train=False))
+    dataset = CustomDataloader('../../dataset/seed-detector/train', get_transform(train=True))
+    dataset_test = CustomDataloader('../../dataset/seed-detector/train', get_transform(train=False))
     return dataset, dataset_test
 

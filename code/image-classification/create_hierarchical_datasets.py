@@ -109,7 +109,7 @@ if len(file_path_variable) > 0:
                                     with open(dataset_path, 'r') as instance_annotation_file:
                                         instance_annotations = json.load(instance_annotation_file)
                                 # add new annotation to annotation file
-                                instance_annotations["images"].append(os.path.join("../" * (index2 - 1), image_name))
+                                instance_annotations["images"].append(image_name)
                                 instance_annotations["labels"].append(levels[index2 + 1])
                                 instance_annotations = json.dumps(instance_annotations, indent=2)
                                 with open(dataset_path, "w") as instance_annotation_file:
