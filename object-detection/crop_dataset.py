@@ -43,7 +43,7 @@ def search_for_file_path ():
 
 file_path_variable = search_for_file_path()
 
-max_crop_size = 800
+max_crop_size = 600
 save_dir = "./crops/"
 
 # did the user select a dir or cancel?

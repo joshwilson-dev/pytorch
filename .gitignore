@@ -1,4 +1,5 @@
-/dataset
+/datasets
+/models
 /object-detection/models
 /image-classification/models
 /venv-pytorch

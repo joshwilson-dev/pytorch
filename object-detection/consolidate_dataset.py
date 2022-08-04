@@ -51,8 +51,7 @@ if len(file_path_variable) > 0:
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             dataset = os.path.join(os.getcwd(), "dataset")
-            if not os.path.exists(dataset):
-                os.makedirs(dataset, exist_ok = True)
+            os.makedirs(dataset, exist_ok = True)
             for file in files:
                 if file.endswith(".json"):
                     annotation_file_name = file
