@@ -1,5 +1,6 @@
 /datasets
 /models
+/code/app/outputs
 /venv-pytorch
 # Byte-compiled / optimized / DLL files
 __pycache__/

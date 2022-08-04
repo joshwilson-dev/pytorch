@@ -7,11 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
-import torch.backends.cudnn as cudnn
-import numpy as np
-import torchvision
-from torchvision import datasets, models, transforms
-import matplotlib.pyplot as plt
+from torchvision import models, transforms
 import time
 import os
 import copy
@@ -26,13 +22,13 @@ def get_args_parser(add_help=True):
     parser = argparse.ArgumentParser(description="PyTorch Hierarchical Classification Training", add_help=add_help)
 
     parser.add_argument("--data-root", default="../../datasets/bird-detector/train/aves", type=str, help="path to top level of hierarchical dataset")
-    parser.add_argument("--output-root", default="../../models/bird-detector/aves", type=str, help="path to top level of hierarchical dataset")
+    parser.add_argument("--output-root", default="../../models/bird-detector/object/aves", type=str, help="path to top level of hierarchical dataset")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
     parser.add_argument("--training-level", default="all", type=str, help="list of classifier levels to train or all to train complete hierarchy")
     return parser
 
 def create_model(num_classes, device):
-    model = models.resnet18(weights='ResNet18_Weights.DEFAULT')
+    model = models.resnet50(weights='ResNet50_Weights.DEFAULT')
     features = model.fc.in_features
     model.fc = nn.Linear(features, num_classes)
     model = model.to(device)
@@ -159,24 +155,27 @@ def main(args):
                 # save idx_to_class fo use when predicting
                 with open(os.path.join(output_path, 'index_to_class.txt'), 'w') as f:
                     json.dump(idx_to_class, f)
-                dataset_train = CustomDataloader(image_paths, class_to_idx, labels, get_transform(train=True))
-                dataset_val = CustomDataloader(image_paths, class_to_idx, labels, get_transform(train=False))
-                train_size = int(0.85 * len(dataset_train))
-                val_size = len(dataset_train) - train_size
-                train_dataset, _ = torch.utils.data.random_split(dataset_train, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-                _, val_dataset = torch.utils.data.random_split(dataset_val, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-                train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-                val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)
-                # create model
-                num_classes = len(list(set(dataset["labels"])))
-                model = create_model(num_classes, device)
-                # train model
-                criterion = nn.CrossEntropyLoss()
-                optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-                exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
-                print("Training {} detector".format(rel_root))
-                model = train_model(model, device, train_loader, val_loader, train_size, val_size, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=2)
-                torch.save(model.state_dict(), os.path.join(output_path, "model_final_state_dict.pth"))
+                # no point producing a model if there's only one class
+                if len(idx_to_class) > 1:
+                    dataset_train = CustomDataloader(image_paths, class_to_idx, labels, get_transform(train=True))
+                    dataset_val = CustomDataloader(image_paths, class_to_idx, labels, get_transform(train=False))
+                    train_size = int(0.85 * len(dataset_train))
+                    val_size = len(dataset_train) - train_size
+                    train_dataset, _ = torch.utils.data.random_split(dataset_train, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+                    _, val_dataset = torch.utils.data.random_split(dataset_val, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+                    train_loader = DataLoader(train_dataset, batch_size=min(len(image_paths), 10), shuffle=True)
+                    val_loader = DataLoader(val_dataset, batch_size=min(len(image_paths), 10), shuffle=True)
+                    # create model
+                    num_classes = len(list(set(dataset["labels"])))
+                    model = create_model(num_classes, device)
+                    # train model
+                    criterion = nn.CrossEntropyLoss()
+                    optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+                    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+                    print(len(idx_to_class))
+                    print("Training {} detector".format(rel_root))
+                    model = train_model(model, device, train_loader, val_loader, train_size, val_size, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25)
+                    torch.save(model.state_dict(), os.path.join(output_path, "model_final_state_dict.pth"))
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)

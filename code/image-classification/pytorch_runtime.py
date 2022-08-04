@@ -16,13 +16,14 @@ def prepare_image(image_path):
 
 idx_to_order = {1: 'anseriformes', 2: 'gruiformes', 3: 'pelecaniformes', 4: 'charadriiformes', 5: 'suliformes', 6: 'passeriformes'}
 
-model = models.resnet18()
+model = models.resnet50()
 features = model.fc.in_features
 model.fc = nn.Linear(features, 6)
 device = torch.device("cuda")
 model = model.to(device)
-model.load_state_dict(torch.load("../../models/bird-detector/aves/model_final_state_dict.pth"))
+model.load_state_dict(torch.load("../../models/bird-detector/object/aves/model_final_state_dict.pth"))
 model.eval()
-prediction = model(prepare_image("../../datasets/bird-detector/train/aves/0a2efa2aa2a6b832570f574722a7f26b.JPG"))[0]
+prediction = model(prepare_image("../../datasets/bird-detector/test/test-4.JPG"))[0]
 prediction = F.softmax(prediction, dim=0).tolist()
-order = idx_to_order[prediction.index(max(prediction))]
+print(prediction)
+# order = idx_to_order[prediction.index(max(prediction))]
