@@ -95,24 +95,24 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             # 'rpn_anchor_generator': rpn_anchor_generator,
             # 'rpn_head': None,
             # 'rpn_pre_nms_top_n_train': 2000,
-            'rpn_pre_nms_top_n_test': 2000,
+            'rpn_pre_nms_top_n_test': 20000,
             # 'rpn_post_nms_top_n_train': 2000,
-            'rpn_post_nms_top_n_test': 2000,
+            'rpn_post_nms_top_n_test': 20000,
             'rpn_nms_thresh': 1.0, # Test
             # 'rpn_fg_iou_thresh': 0.7,
             # 'rpn_bg_iou_thresh': 0.3,
-            'rpn_batch_size_per_image': 2000,
+            'rpn_batch_size_per_image': 20000,
             # 'rpn_positive_fraction': 0.5,
             'rpn_score_thresh': 0.0, # Test
             # 'box_roi_pool': roi_pooler,
             # 'box_head': None,
             'box_predictor': box_predictor,
-            'box_score_thresh': 0.9, # Test
+            'box_score_thresh': 0.95, # Test
             'box_nms_thresh': 0.1, # Test
-            'box_detections_per_img': 2000,
+            'box_detections_per_img': 20000,
             # 'box_fg_iou_thresh': 0.5,
             # 'box_bg_iou_thresh': 0.3,
-            'box_batch_size_per_image': 2000
+            'box_batch_size_per_image': 20000
             # 'box_positive_fraction': 0.25,
             # 'bbox_reg_weights': None
             }
