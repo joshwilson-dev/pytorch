@@ -68,8 +68,8 @@ class CustomDataloader(torch.utils.data.Dataset):
 
 class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
     # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 3): # seed detector
-    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 18): # bird species detector
-    # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 2): # bird detector
+    # def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 37): # bird species detector
+    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 2): # bird detector
         trainable_backbone_layers = _validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
         backbone = resnet_fpn_backbone('resnet101', pretrained_backbone, trainable_layers=trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(1024, num_classes)
@@ -92,7 +92,7 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             # 'max_size': 6000,
             # 'image_mean': None,
             # 'image_std': None,
-            # 'rpn_anchor_generator': rpn_anchor_generator,
+            'rpn_anchor_generator': rpn_anchor_generator,
             # 'rpn_head': None,
             # 'rpn_pre_nms_top_n_train': 2000,
             'rpn_pre_nms_top_n_test': 20000,
@@ -107,12 +107,12 @@ class FRCNNObjectDetector(torchvision.models.detection.faster_rcnn.FasterRCNN):
             # 'box_roi_pool': roi_pooler,
             # 'box_head': None,
             'box_predictor': box_predictor,
-            'box_score_thresh': 0.3, # Test
-            'box_nms_thresh': 0.1, # Test
+            'box_score_thresh': 0.5, # Test
+            'box_nms_thresh': 0.6, # Test
             'box_detections_per_img': 20000,
             # 'box_fg_iou_thresh': 0.5,
             # 'box_bg_iou_thresh': 0.3,
-            'box_batch_size_per_image': 20000
+            # 'box_batch_size_per_image': 20000
             # 'box_positive_fraction': 0.25,
             # 'bbox_reg_weights': None
             }
@@ -127,7 +127,7 @@ def get_transform(train):
     return T.Compose(transforms)
 
 def get_dataset():
-    dataset = CustomDataloader('../dataset/bird-detector/train', get_transform(train=True))
-    dataset_test = CustomDataloader('../dataset/bird-detector/train', get_transform(train=False))
+    dataset = CustomDataloader('../../datasets/bird-detector/train', get_transform(train=True))
+    dataset_test = CustomDataloader('../../datasets/bird-detector/train', get_transform(train=False))
     return dataset, dataset_test
 

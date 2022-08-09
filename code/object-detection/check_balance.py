@@ -58,13 +58,14 @@ if len(file_path_variable) > 0:
                 # parse image exif data
                 image = Image.open(file)
                 exif_dict = piexif.load(image.info['exif'])
-                comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
-                gsd = float(comments["gsd"])
+                # comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+                # gsd = float(comments["gsd"])
                 # parse annotations
                 annotation = os.path.splitext(file)[0] + ".json"
                 with open(annotation) as anns:
                     annotations = json.load(anns)
-                data = pd.DataFrame({"image": file, "gsd": gsd}, index=[0])
+                # data = pd.DataFrame({"image": file, "gsd": gsd}, index=[0])
+                data = pd.DataFrame({"image": file}, index=[0])
                 for instance in annotations['shapes']:
                     if instance["label"] not in data:
                         data[instance["label"]] = 1
@@ -75,3 +76,5 @@ instances_species = dataset_content.sum().reset_index().rename(columns={"index":
 instances_species = instances_species[instances_species["species"] != "image"]
 instances_species = instances_species[instances_species["species"] != "gsd"]
 print(instances_species)
+# for species in instances_species["species"]:
+    # print(species)

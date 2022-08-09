@@ -79,7 +79,7 @@ print(instances_species)
 
 blackout = []
 for species, count in instances_species.itertuples(index=False):
-    if count < 30:
+    if count < 30 or "unknown" in species:
         instances_species = instances_species[instances_species["species"] != species]
         blackout.append(species)
 print(instances_species)
@@ -103,7 +103,10 @@ count = 1
 # check if save directory exists and if no create one 
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
+index = 1
 for file, species in images.itertuples(index=False):
+    print(index, ":", len(images))
+    index += 1
     image = Image.open(file)
     annotation = os.path.splitext(file)[0] + ".json"
     with open(annotation) as anns:
