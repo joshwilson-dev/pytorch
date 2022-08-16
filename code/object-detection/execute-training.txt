@@ -1,6 +1,12 @@
-python train.py --device cuda --batch-size 5 --lr 0.005 --lr-steps 2 10 15 20 25 --lr-gamma 0.05 --epochs 4 --print-freq 20 --output-dir ../model/temp --start_epoch 0 --customdataloader 1 --evalepoch 2 --modelsave 25
-python train.py --device cuda --batch-size 5 --epochs 20 --lr-steps 5 10 15 --print-freq 20 --output-dir ../../models/temp --start_epoch 0 --customdataloader 1 --evalepoch 1 --modelsave 5
+python train.py --device cuda --batch-size 5 --epochs 20 --lr-steps 5 10 15 --print-freq 20 --output-dir ../../models/temp --start_epoch 0 --custommodel 1 --evalepoch 5 --modelsave 1
+
+# mask
+python train.py --device cuda --batch-size 5 --lr 0.005 --epochs 50 --print-freq 50 --output-dir ../../models/temp --start_epoch 0 --custommodel 1 --evalepoch 6000 --modelsave 10
+
+python train.py --device cuda --batch-size 5 --lr 0.0025 --epochs 10 --lr-steps 25 50 75 --print-freq 25 --output-dir ../../models/temp --custommodel 1 --evalepoch 6000 --modelsave 25
+python train.py --device cuda --test-only --custommodel 1 --resume ../model/temp/model_final_checkpoint.pth --epochs 0
+
+venv-pytorch\Lib\site-packages\pycocotools\cocoeval.py
 
 
-
-python train.py --device cuda --test-only --customdataloader 1 --resume ../model/temp/model_final_checkpoint.pth --epochs 0
+python train.py --data-path ../../datasets/seed-detector-coco/ --output-dir ../../models/temp/ --lr 0.001 --lr-steps 250 500 750 --epochs 1000 --evalepoch 250 --modelsave 250 --trainable-backbone-layers 5

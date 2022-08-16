@@ -56,6 +56,16 @@ if len(file_path_variable) > 0:
             for index in reversed(range(0, len(annotation["categories"]))):
                 if ann["id"] == index:
                     ann["id"] = index + 1
+        # add 5 pixels to bounding boxes
+        for index in range(len(annotation["annotations"])):
+            box = annotation["annotations"][index]["bbox"]
+            box[0] += -5
+            box[1] += -5
+            box[2] += 10
+            box[3] += 10
+            area = box[2] * box[3]
+            annotation["annotations"][index]["bbox"] = box
+            annotation["annotations"][index]["area"] = area
 
         annotation = json.dumps(annotation, indent=4)
 

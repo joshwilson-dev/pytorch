@@ -30,7 +30,7 @@ from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
 
 # Josh Wilson addiitions 01/07/2021
-import custom_dataloader
+import custom_detector
 # Josh Wilson addiitions 01/07/2021
 
 def copypaste_collate_fn(batch):
@@ -39,7 +39,9 @@ def copypaste_collate_fn(batch):
 
 
 def get_dataset(name, image_set, transform, data_path):
-    paths = {"coco": (data_path, get_coco, 91), "coco_kp": (data_path, get_coco_kp, 2)}
+    # paths = {"coco": (data_path, get_coco, 91), "coco_kp": (data_path, get_coco_kp, 2)}
+    #Josh Wilson
+    paths = {"coco": (data_path, get_coco, 3), "coco_kp": (data_path, get_coco_kp, 2)}
     p, ds_fn, num_classes = paths[name]
 
     ds = ds_fn(p, image_set=image_set, transforms=transform)
@@ -158,7 +160,7 @@ def get_args_parser(add_help=True):
     )
 
     # Josh Wilson additions 01/07/2021
-    parser.add_argument('--customdataloader', default = 0, type = int, help = 'Should we use a custom dataloader?')
+    parser.add_argument('--custommodel', default = 0, type = int, help = 'Should we use a custom model?')
     parser.add_argument('--evalepoch', default = 1, type = int, help = "How many epochs between a full evaluation?")
     parser.add_argument('--modelsave', default = 1, type = int, help = "How many epochs between a permanent model save?")
     # Josh Wilson additions 01/07/2021
@@ -182,8 +184,8 @@ def main(args):
     print("Loading data")
 
     # Josh Wilson additions 01/07/2021
-    if args.customdataloader == 1:
-        dataset_transformed, dataset_original = custom_dataloader.get_dataset()
+    if args.custommodel == 1:
+        dataset_transformed, dataset_original = custom_detector.get_dataset()
         train_size = int(0.85 * len(dataset_transformed))
         test_size = len(dataset_transformed) - train_size
         dataset, _ = torch.utils.data.random_split(dataset_transformed, [train_size, test_size])
@@ -226,8 +228,8 @@ def main(args):
     print("Creating model")
 
     # Josh Wilson additions 01/07/2021
-    if args.customdataloader == 1:
-        model = custom_dataloader.FRCNNObjectDetector()
+    if args.custommodel == 1:
+        model = custom_detector.get_model()
     else:
         kwargs = {"trainable_backbone_layers": args.trainable_backbone_layers}
         if args.data_augmentation in ["multiscale", "lsj"]:
