@@ -63,7 +63,7 @@ if len(file_path_variable) > 0:
                     with open(annotation) as anns:
                         dictionary = json.load(anns)
                     for index in range(len(dictionary['shapes'])):
-                        segmentation = dictionary["shapes"][index]['segmentations']
+                        segmentation = dictionary["shapes"][index]['points']
                         points = list(tuple(point) for point in segmentation)
                         mask.polygon(points, fill = (index + 1, index + 1, index + 1))
                     mask_name = os.path.join(os.path.splitext(file)[0] + "-mask.png")

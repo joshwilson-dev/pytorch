@@ -41,25 +41,25 @@ class CustomDataloader(torch.utils.data.Dataset):
         filename = self.annotations["filename"][idx]
         # load images and masks
         img_path = os.path.join(self.root, filename + ".JPG")
-        mask_path = os.path.join(self.root, filename + '-mask.png')
+        # mask_path = os.path.join(self.root, filename + '-mask.png')
         image = Image.open(img_path).convert("RGB")
         # note that we haven't converted the mask to RGB,
         # because each color corresponds to a different instance
         # with 0 being background
-        mask = Image.open(mask_path)
+        # mask = Image.open(mask_path)
         # convert the PIL Image into a numpy array
-        mask = np.array(mask)
+        # mask = np.array(mask)
         # instances are encoded as different colors
-        obj_ids = np.unique(mask)
+        # obj_ids = np.unique(mask)
         # first id is the background, so remove it
-        obj_ids = obj_ids[1:]
+        # obj_ids = obj_ids[1:]
 
         # split the color-encoded mask into a set
         # of binary masks
-        masks = mask == obj_ids[:, None, None]
+        # masks = mask == obj_ids[:, None, None]
 
         # convert everything into a torch.Tensor
-        masks = torch.as_tensor(masks, dtype=torch.uint8)
+        # masks = torch.as_tensor(masks, dtype=torch.uint8)
         image_id = torch.tensor([self.annotations["image_id"][idx]])
         iscrowd = torch.zeros((self.annotations["iscrowd"][idx],), dtype=torch.int64)
         boxes = torch.as_tensor(self.annotations["bboxes"][idx], dtype=torch.float32)
@@ -69,7 +69,7 @@ class CustomDataloader(torch.utils.data.Dataset):
         target = {}
         target["boxes"] = boxes
         target["labels"] = labels
-        target["masks"] = masks
+        # target["masks"] = masks
         target["image_id"] = image_id
         target["area"] = area
         target["iscrowd"] = iscrowd
@@ -90,33 +90,27 @@ def get_transform(train):
         transforms.append(T.RandomHorizontalFlip(0.5))
     return T.Compose(transforms)
 
-class get_model(torchvision.models.detection.mask_rcnn.MaskRCNN):
-# class get_model(torchvision.models.detection.faster_rcnn.FasterRCNN):
-    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 3):
+# class get_model(torchvision.models.detection.mask_rcnn.MaskRCNN):
+class get_model(torchvision.models.detection.faster_rcnn.FasterRCNN):
+    def __init__(self, pretrained_backbone=True, trainable_backbone_layers = 5, num_classes = 2):
         trainable_backbone_layers = _validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
         backbone = resnet_fpn_backbone('resnet101', pretrained_backbone, trainable_layers=trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(1024, num_classes)
-        mask_predictor = torchvision.models.detection.mask_rcnn.MaskRCNNPredictor(256, 256, num_classes)
-        anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
-        aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
-        rpn_anchor_generator = torchvision.models.detection.rpn.AnchorGenerator(anchor_sizes, aspect_ratios)
+        # mask_predictor = torchvision.models.detection.mask_rcnn.MaskRCNNPredictor(256, 256, num_classes)
+        # anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
+        # aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
+        # rpn_anchor_generator = torchvision.models.detection.rpn.AnchorGenerator(anchor_sizes, aspect_ratios)
         kwargs = {
             'min_size': (0,),
             'backbone': backbone,
-            'rpn_anchor_generator': rpn_anchor_generator,
+            # 'rpn_anchor_generator': rpn_anchor_generator,
             'box_predictor': box_predictor,
-            'mask_predictor': mask_predictor,
-            'rpn_pre_nms_top_n_test': 10000,
-            'rpn_post_nms_top_n_test': 10000,
-            'rpn_batch_size_per_image': 10000,
-            'rpn_nms_thresh': 1.0,
-            'rpn_score_thresh': 0.0,
-            'box_score_thresh': 0.4,
-            'box_nms_thresh': 0.1,
-            'box_detections_per_img': 10000}
+            # 'mask_predictor': mask_predictor,
+            'box_score_thresh': 0.9,
+            'box_nms_thresh': 0.1}
         super(get_model, self).__init__(**kwargs)
 
 def get_dataset():
-    dataset = CustomDataloader('../../datasets/seed-detector/mask/crops/', get_transform(train=True))
-    dataset_test = CustomDataloader('../../datasets/seed-detector/mask/crops/', get_transform(train=False))
+    dataset = CustomDataloader('../../datasets/bird-detector-coco/train2017', get_transform(train=True))
+    dataset_test = CustomDataloader('../../datasets/bird-detector-coco/val2017', get_transform(train=False))
     return dataset, dataset_test

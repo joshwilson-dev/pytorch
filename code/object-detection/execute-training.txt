@@ -3,10 +3,16 @@ python train.py --device cuda --batch-size 5 --epochs 20 --lr-steps 5 10 15 --pr
 # mask
 python train.py --device cuda --batch-size 5 --lr 0.005 --epochs 50 --print-freq 50 --output-dir ../../models/temp --start_epoch 0 --custommodel 1 --evalepoch 6000 --modelsave 10
 
-python train.py --device cuda --batch-size 5 --lr 0.0025 --epochs 10 --lr-steps 25 50 75 --print-freq 25 --output-dir ../../models/temp --custommodel 1 --evalepoch 6000 --modelsave 25
-python train.py --device cuda --test-only --custommodel 1 --resume ../model/temp/model_final_checkpoint.pth --epochs 0
 
 venv-pytorch\Lib\site-packages\pycocotools\cocoeval.py
 
+custom
+python train.py --custommodel 1 --output-dir ../../models/temp/ --lr 0.001 --lr-steps 25 50 75 --epochs 2 --evalepoch 25 --modelsave 25
 
-python train.py --data-path ../../datasets/seed-detector-coco/ --output-dir ../../models/temp/ --lr 0.001 --lr-steps 250 500 750 --epochs 1000 --evalepoch 250 --modelsave 250 --trainable-backbone-layers 5
+mask rcnn
+python train.py --data-path ../../datasets/seed-detector-coco/ --weights-backbone ResNet50_Weights.DEFAULT --output-dir ../../models/temp/ --lr 0.001 --lr-steps 250 500 750 --epochs 1000 --evalepoch 250 --modelsave 250 --trainable-backbone-layers 5
+
+faster rcnn
+python train.py --data-path ../../datasets/bird-detector-coco/ --model fasterrcnn_resnet50_fpn --weights-backbone ResNet50_Weights.DEFAULT --numclasses 2 --output-dir ../../models/temp/ --lr 0.005 --lr-steps 30 60 90 --epochs 100 --evalepoch 30 --modelsave 30 --trainable-backbone-layers 5
+
+python train.py --data-path ../../datasets/bird-detector-coco/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 2 --output-dir ../../models/temp/ --lr 0.005 --lr-steps 30 60 90 --epochs 100 --evalepoch 30 --modelsave 30 --trainable-backbone-layers 5 --custommodel 1

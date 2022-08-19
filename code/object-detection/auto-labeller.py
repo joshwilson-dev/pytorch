@@ -20,12 +20,15 @@ import torch
 import torchvision
 import PIL
 
+
+# required packages
+# - pytorch cpu
 #################
 #### Content ####
 #################
 
 # model
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.dirname(os.path.abspath(__file__))) # delete this for HPC runtime
 input_dir = "../inputs"
 model_path = os.path.join(input_dir, "model_final_state_dict.pth")
 index_path = os.path.join(input_dir, "index_to_class.txt")
