@@ -217,7 +217,7 @@ def main(args):
     if args.custommodel == 1:
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
-        model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone)
+        model = torchvision.models.detection.__dict__[args.model](backbone = backbone, box_predictor = box_predictor)
     # Josh Wilson additions 01/07/2021
     else:
         kwargs = {"trainable_backbone_layers": args.trainable_backbone_layers}
@@ -305,21 +305,21 @@ def main(args):
             # utils.save_on_master(checkpoint, os.path.join(args.output_dir, f"model_{epoch}.pth"))
             utils.save_on_master(checkpoint, os.path.join(args.output_dir, "checkpoint.pth"))
         
-        # Josh Wilson additions 01/07/2021
+        # Josh Wilson
         if (epoch + 1) % args.modelsave == 0:
             utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_{}.pth'.format(epoch)))
 
         if (epoch + 1) % args.evalepoch == 0:
             evaluate(model, data_loader_test, device=device)
-        # Josh Wilson additions 01/07/2021
+        # Josh Wilson
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f"Training time {total_time_str}")
-    # Josh Wilson additions 01/07/2021
+    # Josh Wilson
     utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_final_state_dict.pth'))
     utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_final_checkpoint.pth'))
-    # Josh Wilson additions 01/07/2021
+    # Josh Wilson
 
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
