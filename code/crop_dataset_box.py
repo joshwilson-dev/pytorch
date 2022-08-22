@@ -43,7 +43,7 @@ def search_for_file_path ():
 
 file_path_variable = search_for_file_path()
 
-max_crop_size = 800
+patch_size = 1333
 save_dir = "./crops/"
 
 # did the user select a dir or cancel?
@@ -64,31 +64,36 @@ if len(file_path_variable) > 0:
                 annotation_name = os.path.splitext(file)[0] + '.json'
                 if os.path.exists(annotation_name):
                     print("Cropping", file)
-                    im = Image.open(file, mode="r")
-                    width, height = im.size
-                    n_crops_width = math.ceil(width / max_crop_size)
-                    n_crops_height = math.ceil(height / max_crop_size)
-                    crop_width = width / n_crops_width
-                    crop_height = height / n_crops_height
-
-                    for i in range(0, n_crops_width):
-                        for a in range(0, n_crops_height):
-                            left = i * crop_width
-                            right = (i + 1) * crop_width
-                            top = a * crop_height
-                            bottom = (a + 1) * crop_height
+                    original_image = Image.open(file, mode="r")
+                    width, height = original_image.size
+                    n_crops_width = math.ceil(width / patch_size)
+                    n_crops_height = math.ceil(height / patch_size)
+                    padded_width = n_crops_width * patch_size
+                    padded_height = n_crops_height * patch_size
+                    pad_width = (padded_width - width) / 2
+                    pad_height = (padded_height - height) / 2
+                    left = (padded_width/2) - (width/2)
+                    top = (padded_height/2) - (height/2)
+                    image = Image.new(original_image.mode, (padded_width, padded_height), "black")
+                    image.paste(original_image, (int(left), int(top)))
+                    for height_index in range(0, n_crops_height):
+                        for width_index in range(0, n_crops_width):
+                            left = width_index * patch_size
+                            right = left + patch_size
+                            top = height_index * patch_size
+                            bottom = top + patch_size
                             with open(annotation_name, 'r') as annotation:
                                 data = json.load(annotation)
-                                data["imageHeight"] = crop_height
-                                data["imageWidth"] = crop_width
+                                data["imageHeight"] = patch_size
+                                data["imageWidth"] = patch_size
                                 restart = TRUE
                                 boxes_kept = 0
                                 while restart == TRUE and boxes_kept != len(data["shapes"]):
-                                    for b in range(boxes_kept, len(data["shapes"])):
-                                        box_x1 = data["shapes"][b]["points"][0][0]
-                                        box_x2 = data["shapes"][b]["points"][1][0]
-                                        box_y1 = data["shapes"][b]["points"][0][1]
-                                        box_y2 = data["shapes"][b]["points"][1][1]
+                                    for shape_index in range(boxes_kept, len(data["shapes"])):
+                                        box_x1 = data["shapes"][shape_index]["points"][0][0] + pad_width
+                                        box_x2 = data["shapes"][shape_index]["points"][1][0] + pad_width
+                                        box_y1 = data["shapes"][shape_index]["points"][0][1] + pad_height
+                                        box_y2 = data["shapes"][shape_index]["points"][1][1] + pad_height
 
                                         box_left = min(box_x1, box_x2)
                                         box_right = max(box_x1, box_x2)
@@ -100,7 +105,7 @@ if len(file_path_variable) > 0:
 
                                         if box_left > right or box_right < left or \
                                             box_top > bottom or box_bottom < top:
-                                            del data["shapes"][b]
+                                            del data["shapes"][shape_index]
                                             restart = TRUE
                                             break
                                         else:
@@ -115,36 +120,30 @@ if len(file_path_variable) > 0:
                                                 # blackout part of image
                                                 topleft = (round(box_left), round(box_top))
                                                 black_box = Image.new("RGB", (round(new_box_width), round(new_box_height)))
-                                                im.paste(black_box, topleft)
-                                                del data["shapes"][b]
+                                                image.paste(black_box, topleft)
+                                                del data["shapes"][shape_index]
                                                 restart = TRUE
                                                 break
                                             else:
-                                                data["shapes"][b]["points"][0][0] = \
+                                                data["shapes"][shape_index]["points"][0][0] = \
                                                     box_left - left
-                                                data["shapes"][b]["points"][1][0] = \
+                                                data["shapes"][shape_index]["points"][1][0] = \
                                                     box_right - left
-                                                data["shapes"][b]["points"][0][1] = \
+                                                data["shapes"][shape_index]["points"][0][1] = \
                                                     box_top - top
-                                                data["shapes"][b]["points"][1][1] = \
+                                                data["shapes"][shape_index]["points"][1][1] = \
                                                     box_bottom - top
                                                 restart = FALSE
                                                 boxes_kept += 1
+                                
                                 if len(data["shapes"]) > 0:
                                     # load exif data
-                                    exif_dict = piexif.load(im.info["exif"])
+                                    exif_dict = piexif.load(original_image.info["exif"])
                                     exif_bytes = piexif.dump(exif_dict)
-                                    img1 = im.crop((left, top, right, bottom))
-                                    img1 = img1.save(save_dir + "img1.JPG", exif = exif_bytes)
-
-                                    hash_md5 = hashlib.md5()
-                                    with open(save_dir + "img1.JPG", "rb") as f:
-                                        for chunk in iter(lambda: f.read(4096), b""):
-                                            hash_md5.update(chunk)
-                                    output = hash_md5.hexdigest()
-                                    image_output = save_dir + output + ".JPG"
-                                    os.rename(save_dir + "img1.JPG", image_output)
-                                    annotation_output = save_dir + output + ".json"
-                                    data["imagePath"] = output + ".JPG"
+                                    image_crop = image.crop((left, top, right, bottom))
+                                    md5hash = hashlib.md5(image_crop.tobytes()).hexdigest()
+                                    image_crop = image_crop.save(save_dir + md5hash + ".JPG", exif = exif_bytes)
+                                    annotation_output = save_dir + md5hash + ".json"
+                                    data["imagePath"] = md5hash + ".JPG"
                                     with open(annotation_output, 'w') as new_annotation:
                                         json.dump(data, new_annotation, indent=2)

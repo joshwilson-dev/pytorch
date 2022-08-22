@@ -21,10 +21,12 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="PyTorch Hierarchical Classification Training", add_help=add_help)
 
-    parser.add_argument("--data-root", default="../../datasets/bird-detector/train/aves", type=str, help="path to top level of hierarchical dataset")
-    parser.add_argument("--output-root", default="../../models/bird-detector/object/aves", type=str, help="path to top level of hierarchical dataset")
+    parser.add_argument("--data-root", default="../datasets/bird-classifier-hierarchy/aves", type=str, help="path to dir containing ")
+    parser.add_argument("--output-root", default="../models/temp/aves", type=str, help="path to top level of hierarchical dataset")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
-    parser.add_argument("--training-level", default="all", type=str, help="list of classifier levels to train or all to train complete hierarchy")
+    parser.add_argument("--batchsize", default=20, type=int, help="Batch size")
+    parser.add_argument("--epochs", default=5, type=int, help="Epochs")
+    parser.add_argument("--printfreq", default=5, type=int, help="After how many batches do you want to print the loss")
     return parser
 
 def create_model(num_classes, device):
@@ -54,17 +56,19 @@ class CustomDataloader(Dataset):
 
 def get_transform(train):
     trans = []
-    trans.append(transforms.ToTensor())
-    trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     if train:
         trans.append(transforms.RandomResizedCrop(224))
         trans.append(transforms.RandomHorizontalFlip(0.5))
+        trans.append(transforms.ToTensor())
+        trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
         trans.append(transforms.Resize(256))
         trans.append(transforms.CenterCrop(224))
+        trans.append(transforms.ToTensor())
+        trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     return transforms.Compose(trans)
 
-def train_model(model, device, train_loader, val_loader, train_size, val_size, criterion, optimizer, scheduler, num_epochs=25):
+def train_model(model, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, num_epochs):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -83,10 +87,13 @@ def train_model(model, device, train_loader, val_loader, train_size, val_size, c
 
             running_loss = 0.0
             running_corrects = 0
+            progress = 0
 
             # Iterate over data.
             loader = train_loader if phase == "train" else val_loader
+            dataset_size = train_size if phase == "train" else val_size
             for inputs, labels in loader:
+                progress += 1
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -108,10 +115,10 @@ def train_model(model, device, train_loader, val_loader, train_size, val_size, c
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
+                if progress % args.printfreq == 0:
+                    print("Image: {}/{}    Loss: {}".format(progress, dataset_size / args.batchsize, running_loss/(progress * args.batchsize)))
             if phase == 'train':
                 scheduler.step()
-
-            dataset_size = train_size if phase == "train" else val_size
             epoch_loss = running_loss / dataset_size
             epoch_acc = running_corrects.double() / dataset_size
 
@@ -121,6 +128,7 @@ def train_model(model, device, train_loader, val_loader, train_size, val_size, c
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
+
         print()
 
     time_elapsed = time.time() - since
@@ -147,7 +155,7 @@ def main(args):
                     os.makedirs(output_path)
                 # create train and val datasets
                 image_paths = dataset["images"]
-                image_paths = [os.path.join(args.data_root, image_path) for image_path in image_paths]
+                image_paths = [os.path.join(args.data_root, "images", image_path) for image_path in image_paths]
                 labels = dataset["labels"]
                 classes = list(set(labels))
                 idx_to_class = {i:j for i, j in enumerate(classes)}
@@ -163,18 +171,17 @@ def main(args):
                     val_size = len(dataset_train) - train_size
                     train_dataset, _ = torch.utils.data.random_split(dataset_train, [train_size, val_size], generator=torch.Generator().manual_seed(42))
                     _, val_dataset = torch.utils.data.random_split(dataset_val, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-                    train_loader = DataLoader(train_dataset, batch_size=min(len(image_paths), 10), shuffle=True)
-                    val_loader = DataLoader(val_dataset, batch_size=min(len(image_paths), 10), shuffle=True)
+                    train_loader = DataLoader(train_dataset, batch_size=min(len(image_paths), args.batchsize), shuffle=True)
+                    val_loader = DataLoader(val_dataset, batch_size=min(len(image_paths), args.batchsize), shuffle=True)
                     # create model
                     num_classes = len(list(set(dataset["labels"])))
                     model = create_model(num_classes, device)
                     # train model
                     criterion = nn.CrossEntropyLoss()
-                    optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-                    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
-                    print(len(idx_to_class))
+                    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+                    scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
                     print("Training {} detector".format(rel_root))
-                    model = train_model(model, device, train_loader, val_loader, train_size, val_size, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25)
+                    model = train_model(model, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, args.epochs)
                     torch.save(model.state_dict(), os.path.join(output_path, "model_final_state_dict.pth"))
 if __name__ == "__main__":
     args = get_args_parser().parse_args()

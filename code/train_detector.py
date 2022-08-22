@@ -28,18 +28,14 @@ from engine import train_one_epoch, evaluate
 from group_by_aspect_ratio import GroupedBatchSampler, create_aspect_ratio_groups
 from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
-
-# Josh Wilson addiitions 01/07/2021
-import custom_dataloader
-# Josh Wilson addiitions 01/07/2021
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
 def copypaste_collate_fn(batch):
     copypaste = SimpleCopyPaste(blending=True, resize_interpolation=InterpolationMode.BILINEAR)
     return copypaste(*utils.collate_fn(batch))
 
-
-def get_dataset(name, image_set, transform, data_path):
-    paths = {"coco": (data_path, get_coco, 91), "coco_kp": (data_path, get_coco_kp, 2)}
+def get_dataset(name, image_set, transform, data_path, num_classes):
+    paths = {"coco": (data_path, get_coco, num_classes), "coco_kp": (data_path, get_coco_kp, 2)}
     p, ds_fn, num_classes = paths[name]
 
     ds = ds_fn(p, image_set=image_set, transforms=transform)
@@ -158,9 +154,11 @@ def get_args_parser(add_help=True):
     )
 
     # Josh Wilson additions 01/07/2021
-    parser.add_argument('--customdataloader', default = 0, type = int, help = 'Should we use a custom dataloader?')
+    parser.add_argument('--custommodel', default = 0, type = int, help = 'Should we use a custom model?')
     parser.add_argument('--evalepoch', default = 1, type = int, help = "How many epochs between a full evaluation?")
     parser.add_argument('--modelsave', default = 1, type = int, help = "How many epochs between a permanent model save?")
+    parser.add_argument('--numclasses', default = 91, type = int, help = "How many classes are there?")
+    parser.add_argument('--backbone', default = "resnet50", type = str, help = "Which backbone do you want to use?")
     # Josh Wilson additions 01/07/2021
 
     return parser
@@ -181,18 +179,8 @@ def main(args):
     # Data loading code
     print("Loading data")
 
-    # Josh Wilson additions 01/07/2021
-    if args.customdataloader == 1:
-        dataset_transformed, dataset_original = custom_dataloader.get_dataset()
-        train_size = int(0.85 * len(dataset_transformed))
-        test_size = len(dataset_transformed) - train_size
-        dataset, _ = torch.utils.data.random_split(dataset_transformed, [train_size, test_size])
-        _, dataset_test = torch.utils.data.random_split(dataset_original, [train_size, test_size])
-    else:
-
-        dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path)
-        dataset_test, _ = get_dataset(args.dataset, "val", get_transform(False, args), args.data_path)
-    # Josh Wilson additions 01/07/2021
+    dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
+    dataset_test, _ = get_dataset(args.dataset, "val", get_transform(False, args), args.data_path, args.numclasses)
 
     print("Creating data loaders")
     if args.distributed:
@@ -226,8 +214,11 @@ def main(args):
     print("Creating model")
 
     # Josh Wilson additions 01/07/2021
-    if args.customdataloader == 1:
-        model = custom_dataloader.FRCNNObjectDetector()
+    if args.custommodel == 1:
+        backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
+        box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
+        model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone)
+    # Josh Wilson additions 01/07/2021
     else:
         kwargs = {"trainable_backbone_layers": args.trainable_backbone_layers}
         if args.data_augmentation in ["multiscale", "lsj"]:
@@ -236,9 +227,8 @@ def main(args):
             if args.rpn_score_thresh is not None:
                 kwargs["rpn_score_thresh"] = args.rpn_score_thresh
         model = torchvision.models.detection.__dict__[args.model](
-            weights=args.weights, weights_backbone=args.weights_backbone, num_classes=num_classes, **kwargs
+            weights=args.weights, weights_backbone=args.weights_backbone, **kwargs
         )
-    # Josh Wilson additions 01/07/2021
     model.to(device)
     if args.distributed and args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)

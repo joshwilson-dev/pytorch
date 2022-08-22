@@ -1,0 +1,11 @@
+custom
+python train.py --data-path ../../datasets/bird-detector-coco/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 2 --output-dir ../../models/temp/ --lr 0.001 --lr-steps 30 60 90 --epochs 100 --evalepoch 30 --modelsave 30 --trainable-backbone-layers 5 --custommodel 1 --batch-size 1
+
+mask rcnn
+python train.py --data-path ../../datasets/seed-detector-coco/ --weights-backbone ResNet50_Weights.DEFAULT --output-dir ../../models/temp/ --lr 0.001 --lr-steps 250 500 750 --epochs 1000 --evalepoch 250 --modelsave 250 --trainable-backbone-layers 5
+
+faster rcnn
+python train_detector.py --data-path ../../datasets/bird-detector-coco/ --model fasterrcnn_resnet50_fpn --weights-backbone ResNet50_Weights.DEFAULT --numclasses 2 --output-dir ../../models/temp/ --lr 0.005 --lr-steps 30 60 90 --epochs 100 --evalepoch 30 --modelsave 30 --trainable-backbone-layers 5
+
+hierarchical classifiers
+python train_classifiers.py

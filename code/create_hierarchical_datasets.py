@@ -14,9 +14,7 @@
 ###############
 import json
 import os
-from pickle import FALSE, TRUE
 from PIL import Image
-import math
 import hashlib
 import tkinter
 from tkinter import filedialog
@@ -51,6 +49,8 @@ if len(file_path_variable) > 0:
         "Are you sure you want to create an hierarchical image classification dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
+        if not os.path.exists("images"):
+            os.makedirs("images")
         # walk through image files and crop
         for file in os.listdir():
             if file.endswith(".json") and file != "dataset.json":
@@ -84,7 +84,7 @@ if len(file_path_variable) > 0:
 
                     # copy instance and annotation into relveant hierarchy dir
                     label = annotations["shapes"][index1]["label"]
-                    levels = label.split('-')
+                    levels = label.split('_')
                     for index2 in range(1, len(levels)):
                         level_dir = levels[index2]
                         # no need for a classifier of the last level
@@ -100,7 +100,7 @@ if len(file_path_variable) > 0:
                                 # save instance to top level, we only need annotation file
                                 # in each hierarchical dirs, not actual images
                                 if index2 == 1:
-                                    instance.save(os.path.join(level_dir, image_name), exif = exif_bytes)
+                                    instance.save(os.path.join("images", image_name), exif = exif_bytes)
                                 # check if annotation file already exists otherwise create it
                                 dataset_path = os.path.join(level_dir, "dataset.json")
                                 if not os.path.exists(dataset_path):
