@@ -1,7 +1,5 @@
 /datasets
 /models
-/object-detection/models
-/image-classification/models
 /venv-pytorch
 # Byte-compiled / optimized / DLL files
 __pycache__/
