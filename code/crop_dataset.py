@@ -90,10 +90,10 @@ if len(file_path_variable) > 0:
                                 boxes_kept = 0
                                 while restart == TRUE and boxes_kept != len(data["shapes"]):
                                     for shape_index in range(boxes_kept, len(data["shapes"])):
-                                        box_x1 = data["shapes"][shape_index]["points"][0][0] + pad_width
-                                        box_x2 = data["shapes"][shape_index]["points"][1][0] + pad_width
-                                        box_y1 = data["shapes"][shape_index]["points"][0][1] + pad_height
-                                        box_y2 = data["shapes"][shape_index]["points"][1][1] + pad_height
+                                        box_x1 = min(x[0] for x in data["shapes"][shape_index]["points"]) + pad_width
+                                        box_x2 = max(x[0] for x in data["shapes"][shape_index]["points"]) + pad_width
+                                        box_y1 = min(x[1] for x in data["shapes"][shape_index]["points"]) + pad_height
+                                        box_y2 = max(x[1] for x in data["shapes"][shape_index]["points"]) + pad_height
 
                                         box_left = min(box_x1, box_x2)
                                         box_right = max(box_x1, box_x2)
@@ -116,8 +116,8 @@ if len(file_path_variable) > 0:
                                             new_box_width = box_right - box_left
                                             new_box_height = box_bottom - box_top
                                             new_box_area = new_box_width * new_box_height
-                                            if new_box_area < 0.3 * box_area:
-                                                # blackout part of image
+                                            if new_box_area < box_area:
+                                                # blackout part of image if box is cut off
                                                 topleft = (round(box_left), round(box_top))
                                                 black_box = Image.new("RGB", (round(new_box_width), round(new_box_height)))
                                                 image.paste(black_box, topleft)
@@ -125,14 +125,9 @@ if len(file_path_variable) > 0:
                                                 restart = TRUE
                                                 break
                                             else:
-                                                data["shapes"][shape_index]["points"][0][0] = \
-                                                    box_left - left
-                                                data["shapes"][shape_index]["points"][1][0] = \
-                                                    box_right - left
-                                                data["shapes"][shape_index]["points"][0][1] = \
-                                                    box_top - top
-                                                data["shapes"][shape_index]["points"][1][1] = \
-                                                    box_bottom - top
+                                                for index in range(len(data["shapes"][shape_index]["points"])):
+                                                    data["shapes"][shape_index]["points"][index][0] += - left + pad_width
+                                                    data["shapes"][shape_index]["points"][index][1] += - top + pad_height
                                                 restart = FALSE
                                                 boxes_kept += 1
                                 
@@ -142,7 +137,7 @@ if len(file_path_variable) > 0:
                                     exif_bytes = piexif.dump(exif_dict)
                                     image_crop = image.crop((left, top, right, bottom))
                                     md5hash = hashlib.md5(image_crop.tobytes()).hexdigest()
-                                    image_crop = image_crop.save(save_dir + md5hash + ".JPG", exif = exif_bytes)
+                                    image_crop.save(save_dir + md5hash + ".JPG", exif = exif_bytes)
                                     annotation_output = save_dir + md5hash + ".json"
                                     data["imagePath"] = md5hash + ".JPG"
                                     with open(annotation_output, 'w') as new_annotation:

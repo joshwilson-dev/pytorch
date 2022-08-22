@@ -1,10 +1,7 @@
 import torch
 import torchvision
-import custom_detector
 import PIL
 import os
-import importlib
-importlib.reload(custom_detector)
 import json
 from torchvision.io import read_image
 import utils
@@ -46,46 +43,50 @@ def prepare_image(image_path, device):
         patch = patch.unsqueeze(0)
         patch = patch.to(device)
         batch = torch.cat((batch, patch), 0)
-    return batch, pad_width, pad_height, n_crops_height, n_crops_width
+    return width, height, batch, pad_width, pad_height, n_crops_height, n_crops_width
 
 def draw_boxes(image_path, model, device):
-    batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image(image_path, device)
+    width, height, batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image(image_path, device)
     with torch.no_grad():
         prediction = model(batch)
     boxes = torch.empty(0, 4).to(device)
     scores = torch.empty(0).to(device)
     labels = torch.empty(0, dtype=torch.int64).to(device)
-    # masks =
+    masks = torch.empty(0, 1, height, width).to(device)
     for height_index in range(n_crops_height):
         for width_index in range(n_crops_width):
             patch_index = height_index * n_crops_width + width_index
-            x_adj = (patch_size - overlap) * width_index - pad_width
-            y_adj = (patch_size - overlap) * height_index - pad_height
-            adjustment = torch.tensor([[x_adj, y_adj, x_adj, y_adj]]).to(device)
+            padding_left = (patch_size - overlap) * width_index - pad_width
+            padding_top = (patch_size - overlap) * height_index - pad_height
+            adjustment = torch.tensor([[padding_left, padding_top, padding_left, padding_top]]).to(device)
             adj_boxes = torch.add(adjustment, prediction[patch_index]["boxes"])
             boxes = torch.cat((boxes, adj_boxes), 0)
             scores = torch.cat((scores, prediction[patch_index]["scores"]), 0)
             labels = torch.cat((labels, prediction[patch_index]["labels"]), 0)
-            # masks = 
+            # pad masks to full image
+            padding_right = width - padding_left - patch_size
+            padding_bottom = height - padding_top - patch_size
+            padding = (int(math.ceil(padding_left)), int(math.floor(padding_right)), int(math.ceil(padding_top)), int(math.floor(padding_bottom)))
+            padded_masks = torch.nn.functional.pad(prediction[patch_index]["masks"], padding, "constant", 0)
+            masks = torch.cat((masks, padded_masks), 0)
     nms_indices = torchvision.ops.nms(boxes, scores, 0.1)
     boxes = boxes[nms_indices]
     scores = scores[nms_indices].tolist()
     labels = labels[nms_indices].tolist()
+    mask_threshold = 0.5
+    masks = masks[nms_indices] > mask_threshold
     image = read_image(image_path)
-    # mask_threshold = 0.5
-    # masks = prediction[0]['masks'] > mask_threshold
     string_scores = ['{0:.2f}'.format(score) for score in scores]
     named_labels = [index_to_class[str(i)] for i in labels]
     named_labels_with_scores = [named_labels[i] + ": " + string_scores[i] for i in range(len(scores))]
     ouput_image = torchvision.utils.draw_bounding_boxes(image, boxes = boxes, labels = named_labels_with_scores)
-    # ouput_image = torchvision.utils.draw_segmentation_masks(ouput_image, masks.squeeze(1), alpha=0.5)
+    ouput_image = torchvision.utils.draw_segmentation_masks(ouput_image, masks.squeeze(1), alpha=0.5)
     ouput_image = torchvision.transforms.ToPILImage()(ouput_image)
     ouput_image.show()
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-# device = torch.device("cpu")
-device = torch.device("cuda")
-# model = custom_detector.get_model()
+device = torch.device("cpu")
+# device = torch.device("cuda")
 kwargs = {
     "rpn_pre_nms_top_n_test": 1000,
     "rpn_post_nms_top_n_test": 1000,
@@ -95,21 +96,21 @@ kwargs = {
     "box_nms_thresh": 0.1,
     "box_detections_per_img": 1000}
 
-# model = torchvision.models.detection.__dict__["maskrcnn_resnet50_fpn"](weights=None, weights_backbone=None, num_classes=3, **kwargs)
+model = torchvision.models.detection.__dict__["maskrcnn_resnet50_fpn"](num_classes=3, **kwargs)
 # model = torchvision.models.detection.__dict__["fasterrcnn_resnet50_fpn"](num_classes=2, **kwargs)
-backbone = resnet_fpn_backbone(backbone_name = 'resnet101', weights = "ResNet101_Weights.DEFAULT")
-box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, 2)
-model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
-model_root = "../../models/temp"
+# backbone = resnet_fpn_backbone(backbone_name = 'resnet101', weights = "ResNet101_Weights.DEFAULT")
+# box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, 2)
+# model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
+model_root = "../models/temp"
 model_path = model_root + "/model_final_state_dict.pth"
 index_path = model_root + "/index_to_class.txt"
 model.load_state_dict(torch.load(model_path, map_location=device))
 index_to_class = json.load(open(index_path))
 model.eval()
 model = model.to(device)
-prediction_1 = draw_boxes("../../datasets/bird-detector-coco/original/0a43172c9392d9f3671a0cb620ef2e5d.JPG", model, device)
+prediction_1 = draw_boxes("../datasets/seed-detector/original/Pan - 1.JPG", model, device)
 # for converting checkpoint
-# model_path = "../../models/temp/model_249.pth"
+# model_path = "../models/temp/model_249.pth"
 # checkpoint = torch.load(model_path, map_location="cpu")
 # model.load_state_dict(checkpoint["model"])
 # utils.save_on_master(model.state_dict(), "../../models/temp/model_final_state_dict.pth")
