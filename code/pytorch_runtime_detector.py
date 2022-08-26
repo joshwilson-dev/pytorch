@@ -8,8 +8,32 @@ import utils
 import math
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
+def get_args_parser(add_help=True):
+    import argparse
+    parser = argparse.ArgumentParser(description="Pytorch to Labelme Auto-labeller", add_help=add_help)
+    parser.add_argument("--backbone", default="resnet50", type=str, help="backbone architecture")
+    parser.add_argument("--model", default="MaskRCNN", type=str, help="FasterRCNN or MaskRCNN?")
+    parser.add_argument("--root", default="../models/temp/", type=str, help="Path to root")
+    parser.add_argument("--device", default="cpu", type=str, help="cpu or cuda")
+    parser.add_argument("--image", default="../datasets/seed-box/original/Pan - 21.JPG", type=str, help="Path to image")
+    parser.add_argument("--convert", default="False", type=str, help="Do you want to convert a checkpoint to a state dict?")
+    return parser
+
 patch_size = 1333
 overlap = 150
+
+def create_model(device, index_to_class):
+    num_classes = len(index_to_class) + 1
+    kwargs = json.load(open(args.root + "/kwargs.txt"))
+    backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights = "DEFAULT")
+    box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
+    if args.model == "MaskRCNN":
+        mask_predictor_in_channels = 256
+        mask_dim_reduced = 256
+        mask_predictor = torchvision.models.detection.mask_rcnn.MaskRCNNPredictor(mask_predictor_in_channels, mask_dim_reduced, num_classes)
+        kwargs["mask_predictor"] = mask_predictor
+    model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone, **kwargs)
+    return model
 
 def prepare_image(image_path, device):
     original_image = PIL.Image.open(image_path).convert('RGB')
@@ -45,7 +69,7 @@ def prepare_image(image_path, device):
         batch = torch.cat((batch, patch), 0)
     return width, height, batch, pad_width, pad_height, n_crops_height, n_crops_width
 
-def draw_boxes(image_path, model, device):
+def draw_boxes(index_to_class, image_path, model, device):
     width, height, batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image(image_path, device)
     with torch.no_grad():
         prediction = model(batch)
@@ -63,54 +87,45 @@ def draw_boxes(image_path, model, device):
             boxes = torch.cat((boxes, adj_boxes), 0)
             scores = torch.cat((scores, prediction[patch_index]["scores"]), 0)
             labels = torch.cat((labels, prediction[patch_index]["labels"]), 0)
-            # pad masks to full image
-            padding_right = width - padding_left - patch_size
-            padding_bottom = height - padding_top - patch_size
-            padding = (int(math.ceil(padding_left)), int(math.floor(padding_right)), int(math.ceil(padding_top)), int(math.floor(padding_bottom)))
-            padded_masks = torch.nn.functional.pad(prediction[patch_index]["masks"], padding, "constant", 0)
-            masks = torch.cat((masks, padded_masks), 0)
+            if args.model == "MaskRCNN":
+                # pad masks to full image
+                padding_right = width - padding_left - patch_size
+                padding_bottom = height - padding_top - patch_size
+                padding = (int(math.ceil(padding_left)), int(math.floor(padding_right)), int(math.ceil(padding_top)), int(math.floor(padding_bottom)))
+                padded_masks = torch.nn.functional.pad(prediction[patch_index]["masks"], padding, "constant", 0)
+                masks = torch.cat((masks, padded_masks), 0)
     nms_indices = torchvision.ops.nms(boxes, scores, 0.1)
     boxes = boxes[nms_indices]
     scores = scores[nms_indices].tolist()
     labels = labels[nms_indices].tolist()
-    mask_threshold = 0.5
-    masks = masks[nms_indices] > mask_threshold
     image = read_image(image_path)
     string_scores = ['{0:.2f}'.format(score) for score in scores]
     named_labels = [index_to_class[str(i)] for i in labels]
     named_labels_with_scores = [named_labels[i] + ": " + string_scores[i] for i in range(len(scores))]
     ouput_image = torchvision.utils.draw_bounding_boxes(image, boxes = boxes, labels = named_labels_with_scores)
-    ouput_image = torchvision.utils.draw_segmentation_masks(ouput_image, masks.squeeze(1), alpha=0.5)
+    if args.model == "MaskRCNN":
+        mask_threshold = 0.5
+        masks = masks[nms_indices] > mask_threshold
+        ouput_image = torchvision.utils.draw_segmentation_masks(ouput_image, masks.squeeze(1), alpha=0.5)
     ouput_image = torchvision.transforms.ToPILImage()(ouput_image)
     ouput_image.show()
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-device = torch.device("cpu")
-# device = torch.device("cuda")
-kwargs = {
-    "rpn_pre_nms_top_n_test": 1000,
-    "rpn_post_nms_top_n_test": 1000,
-    "rpn_nms_thresh": 0.7,
-    "rpn_score_thresh": 0.0,
-    "box_score_thresh": 0.9,
-    "box_nms_thresh": 0.1,
-    "box_detections_per_img": 1000}
+def main():
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    device = torch.device(args.device)
+    index_to_class = json.load(open(args.root + "index_to_class.txt"))
+    model = create_model(device, index_to_class)
+    if args.convert == "True":
+        state_dict_path = os.path.join(args.root, "model_59.pth")
+        checkpoint = torch.load(state_dict_path, map_location="cpu")
+        model.load_state_dict(checkpoint["model"])
+        utils.save_on_master(model.state_dict(), args.root + "/model_final_state_dict.pth")
+    else:
+        model.load_state_dict(torch.load(args.root + "/model_final_state_dict.pth", map_location=device))
+        model.eval()
+        model = model.to(device)
+        draw_boxes(index_to_class, args.image, model, device)
 
-model = torchvision.models.detection.__dict__["maskrcnn_resnet50_fpn"](num_classes=3, **kwargs)
-# model = torchvision.models.detection.__dict__["fasterrcnn_resnet50_fpn"](num_classes=2, **kwargs)
-# backbone = resnet_fpn_backbone(backbone_name = 'resnet101', weights = "ResNet101_Weights.DEFAULT")
-# box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, 2)
-# model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
-model_root = "../models/temp"
-model_path = model_root + "/model_final_state_dict.pth"
-index_path = model_root + "/index_to_class.txt"
-model.load_state_dict(torch.load(model_path, map_location=device))
-index_to_class = json.load(open(index_path))
-model.eval()
-model = model.to(device)
-prediction_1 = draw_boxes("../datasets/seed-detector/original/Pan - 1.JPG", model, device)
-# for converting checkpoint
-# model_path = "../models/temp/model_249.pth"
-# checkpoint = torch.load(model_path, map_location="cpu")
-# model.load_state_dict(checkpoint["model"])
-# utils.save_on_master(model.state_dict(), "../../models/temp/model_final_state_dict.pth")
+if __name__ == "__main__":
+    args = get_args_parser().parse_args()
+    main()
