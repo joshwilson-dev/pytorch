@@ -159,6 +159,7 @@ def get_args_parser(add_help=True):
     parser.add_argument('--modelsave', default = 1, type = int, help = "How many epochs between a permanent model save?")
     parser.add_argument('--numclasses', default = 91, type = int, help = "How many classes are there?")
     parser.add_argument('--backbone', default = "resnet50", type = str, help = "Which backbone do you want to use?")
+    parser.add_argument('--box_positive_fraction', default = 0.25, type = float, help = "Proportion of positive proposals in a mini-batch during training of the classification head")
     # Josh Wilson additions 01/07/2021
 
     return parser
@@ -215,9 +216,10 @@ def main(args):
 
     # Josh Wilson additions 01/07/2021
     if args.custommodel == 1:
+        kwargs = {"box_positive_fraction": args.box_positive_fraction}
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
-        model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone)
+        model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone, **kwargs)
     # Josh Wilson additions 01/07/2021
     else:
         kwargs = {"trainable_backbone_layers": args.trainable_backbone_layers}

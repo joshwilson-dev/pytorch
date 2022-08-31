@@ -8,6 +8,9 @@ import utils
 import math
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
+index_to_colour = {
+    1: "white"
+}
 def get_args_parser(add_help=True):
     import argparse
     parser = argparse.ArgumentParser(description="Pytorch to Labelme Auto-labeller", add_help=add_help)
@@ -101,14 +104,16 @@ def draw_boxes(index_to_class, image_path, model, device):
     image = read_image(image_path)
     string_scores = ['{0:.2f}'.format(score) for score in scores]
     named_labels = [index_to_class[str(i)] for i in labels]
+    named_colours = [index_to_colour[i] for i in labels]
     named_labels_with_scores = [named_labels[i] + ": " + string_scores[i] for i in range(len(scores))]
-    ouput_image = torchvision.utils.draw_bounding_boxes(image, boxes = boxes, labels = named_labels_with_scores)
+    ouput_image = torchvision.utils.draw_bounding_boxes(image, boxes = boxes, labels = named_labels_with_scores, font="../models/bird-species-detector/BKANT.TTF", font_size=30, colors = named_colours)
     if args.model == "MaskRCNN":
         mask_threshold = 0.5
         masks = masks[nms_indices] > mask_threshold
         ouput_image = torchvision.utils.draw_segmentation_masks(ouput_image, masks.squeeze(1), alpha=0.5)
     ouput_image = torchvision.transforms.ToPILImage()(ouput_image)
-    ouput_image.show()
+    # ouput_image.show()
+    ouput_image.save("../datasets/trial/test-5-detected.jpg")
 
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))

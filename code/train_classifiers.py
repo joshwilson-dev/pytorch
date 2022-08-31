@@ -49,19 +49,25 @@ class CustomDataloader(Dataset):
     def __getitem__(self, index):
         image_path = self.image_paths[index]
         image = PIL.Image.open(image_path).convert('RGB')
+        width, height = image.size
         label = torch.tensor(self.class_to_idx[self.labels[index]])
         if self.transform is not None:
-            image = self.transform(image)
+            image = self.transform(image, width, height)
         return image, label
 
-def get_transform(train):
+def get_transform(train, width, height):
     trans = []
+    if height > width: pad = [int((height - width) / 2), 0]
+    else: pad = [0, int((width - height)/2)]
     if train:
-        trans.append(transforms.RandomResizedCrop(224))
+        trans.append(transforms.Pad(pad))
+        trans.append(transforms.Resize(256))
+        trans.append(transforms.CenterCrop(224))
         trans.append(transforms.RandomHorizontalFlip(0.5))
         trans.append(transforms.ToTensor())
         trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     else:
+        trans.append(transforms.Pad(pad))
         trans.append(transforms.Resize(256))
         trans.append(transforms.CenterCrop(224))
         trans.append(transforms.ToTensor())

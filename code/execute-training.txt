@@ -15,7 +15,7 @@ hierarchical classifiers
 python train_classifiers.py
 
 runtime
-python pytorch_runtime_detector.py --root ../models/temp/ --backbone resnet101 --model FasterRCNN --device cuda --convert False
+python pytorch_runtime_detector.py --root ../models/bird-species-detector/ --backbone resnet101 --model FasterRCNN --device cuda --convert False --image ../datasets/trial/14d1c48321ae01c6bc9784e1eb44de10.JPG
 
 test
 python train_detector.py --data-path ../datasets/seed-box/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 3 --output-dir ../models/temp/ --resume ../models/seed-box/model_final_checkpoint.pth --test-only --custommodel 1 --trainable-backbone-layers 5
