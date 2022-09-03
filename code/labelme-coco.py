@@ -85,9 +85,9 @@ if len(file_path_variable) > 0:
             annotation["annotations"][index]["segmentation"] = segmentation
         
         # make all classes bird
-        # for index in range(len(annotation["annotations"])):
-        #     annotation["annotations"][index]["category_id"] = 1
-        # annotation["categories"] = [{"id": 1, "name": "Bird","supercategory": "Bird"}]
+        for index in range(len(annotation["annotations"])):
+            annotation["annotations"][index]["category_id"] = 1
+        annotation["categories"] = [{"id": 1, "name": "Bird","supercategory": "Bird"}]
 
         # save to file
         annotation = json.dumps(annotation, indent=4)

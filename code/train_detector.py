@@ -155,9 +155,8 @@ def get_args_parser(add_help=True):
 
     # Josh Wilson additions 01/07/2021
     parser.add_argument('--custommodel', default = 0, type = int, help = 'Should we use a custom model?')
-    parser.add_argument('--evalepoch', default = 1, type = int, help = "How many epochs between a full evaluation?")
-    parser.add_argument('--modelsave', default = 1, type = int, help = "How many epochs between a permanent model save?")
     parser.add_argument('--numclasses', default = 91, type = int, help = "How many classes are there?")
+    parser.add_argument('--patience', default = 5, type = int, help = "How many epochs without improvement before action?")
     parser.add_argument('--backbone', default = "resnet50", type = str, help = "Which backbone do you want to use?")
     parser.add_argument('--box_positive_fraction', default = 0.25, type = float, help = "Proportion of positive proposals in a mini-batch during training of the classification head")
     # Josh Wilson additions 01/07/2021
@@ -179,10 +178,17 @@ def main(args):
 
     # Data loading code
     print("Loading data")
-
+    
+    # Josh Wilson
+    # dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
+    # dataset_test, _ = get_dataset(args.dataset, "val", get_transform(False, args), args.data_path, args.numclasses)
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
-    dataset_test, _ = get_dataset(args.dataset, "val", get_transform(False, args), args.data_path, args.numclasses)
-
+    dataset_test, _ = get_dataset(args.dataset, "train", get_transform(False, args), args.data_path, args.numclasses)
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
+    dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
+    _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
+    # Josh Wilson
     print("Creating data loaders")
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
@@ -286,14 +292,20 @@ def main(args):
         torch.backends.cudnn.deterministic = True
         evaluate(model, data_loader_test, device=device)
         return
-
+    # Josh Wilson
+    from torch.utils.tensorboard import SummaryWriter
+    writer = SummaryWriter(log_dir = args.output_dir)
+    epochs_without_improvement = 0
+    lr_steps = 0
+    best_mAP = 0
+    # Josh Wilson
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
-        lr_scheduler.step()
+        # lr_scheduler.step()
         if args.output_dir:
             checkpoint = {
                 "model": model_without_ddp.state_dict(),
@@ -305,23 +317,39 @@ def main(args):
             if args.amp:
                 checkpoint["scaler"] = scaler.state_dict()
             # utils.save_on_master(checkpoint, os.path.join(args.output_dir, f"model_{epoch}.pth"))
-            utils.save_on_master(checkpoint, os.path.join(args.output_dir, "checkpoint.pth"))
-        
-        # Josh Wilson additions 01/07/2021
-        if (epoch + 1) % args.modelsave == 0:
-            utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_{}.pth'.format(epoch)))
 
-        if (epoch + 1) % args.evalepoch == 0:
-            evaluate(model, data_loader_test, device=device)
-        # Josh Wilson additions 01/07/2021
+        # Josh Wilson
+        results = evaluate(model, data_loader_test, device=device)
+        mAP = results.coco_eval["bbox"].stats[1]
+        writer.add_scalar("mAP", mAP, epoch)
+        if mAP > best_mAP:
+            print("The model improved this epoch")
+            # save best model and state dict
+            utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
+            utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
+            best_mAP = mAP
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            print("The model has not improved for {} epochs...".format(epochs_without_improvement))
+        if epochs_without_improvement > args.patience:
+            print("{} epochs without improvement...".format(args.patience))
+            # load best model checkpoint
+            checkpoint = torch.load(os.path.join(args.output_dir, 'model_best_checkpoint.pth'), map_location="cpu")
+            model_without_ddp.load_state_dict(checkpoint["model"])
+            # decrease the learning rate, unless at last lr, then stop
+            if lr_steps < len(args.lr_steps) - 1:
+                print("Decreasing learning rate...")
+                lr_scheduler.step()
+                lr_steps += 1
+            else:
+                writer.flush()
+                break
+        # Josh Wilson
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f"Training time {total_time_str}")
-    # Josh Wilson additions 01/07/2021
-    utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_final_state_dict.pth'))
-    utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_final_checkpoint.pth'))
-    # Josh Wilson additions 01/07/2021
 
 if __name__ == "__main__":
     args = get_args_parser().parse_args()

@@ -20,6 +20,7 @@ import tkinter
 from tkinter import filedialog
 from tkinter import messagebox
 import piexif
+import torchvision.transforms as T
 
 #################
 #### Content ####
@@ -72,6 +73,10 @@ if len(file_path_variable) > 0:
                     box_top = min(box_y1, box_y2)
                     box_bottom = max(box_y1, box_y2)
                     instance = image.crop((box_left, box_top, box_right, box_bottom))
+                    width, height = instance.size
+                    if height > width: pad = [int((height - width) / 2), 0]
+                    else: pad = [0, int((width - height)/2)]
+                    instance = T.Pad(padding=pad)(instance)
 
                     # determine image hash
                     md5hash = hashlib.md5(instance.tobytes()).hexdigest()
