@@ -52,11 +52,20 @@ if len(file_path_variable) > 0:
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
-                if file.endswith(".json"):
-                    annotation_file_path = os.path.join(root, file)
-                    annotation_file_size = os.path.getsize(annotation_file_path)
-                    if annotation_file_size > 100000:
-                        # annotation = json.load(open(file))
-                        # annotation["imageData"] = "null"
-                        # not done
-                        print(annotation_file_path, annotation_file_size)
+                if file.endswith(tuple(["jpg", "jpeg", "png", "tif", "tiff"])):
+                    print("Incorrect Extension:", file)
+                    if file.endswith(tuple(["jpg", "jpeg"])):
+                        print("renaming:", file)
+                        file_path = os.path.join(root, file)
+                        new_name = os.path.splitext(file)[0] + ".JPG"
+                        new_file_path = os.path.join(root, new_name)
+                        annotation_name = os.path.splitext(file)[0] + ".json"
+                        annotation_path = os.path.join(root, annotation_name)
+                        if os.path.exists(annotation_path):
+                            annotation = json.load(open(annotation_path))
+                            annotation["imagePath"] = new_name
+                            new_annotation = json.dumps(annotation, indent=4)
+                            with open(annotation_path, "w") as outfile:
+                                outfile.write(new_annotation)
+                        os.rename(file_path, new_file_path)
+                    

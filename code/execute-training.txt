@@ -1,8 +1,8 @@
 custom
 bird
-python train_detector.py --data-path ../datasets/bird-detector-gsd/gsd_split/fine/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 2 --output-dir ../models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 1000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 1
+python train_detector.py --data-path ../datasets/bird-detector/fine/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 2 --output-dir ../models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 1000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 1
 seed
-python train_detector.py --data-path ../datasets/seed-box/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 3 --output-dir ../models/temp/ --lr 0.001 --lr-steps 30 60 90 --epochs 100 --evalepoch 30 --modelsave 30 --trainable-backbone-layers 5 --custommodel 1 --batch-size 1
+python train_detector.py --data-path ../datasets/seed-box/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 3 --output-dir ../models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 1000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 1 --box_positive_fraction 0.15
 
 mask rcnn
 python train_detector.py --data-path ../datasets/seed-detector/ --model maskrcnn_resnet50_fpn --weights-backbone ResNet50_Weights.DEFAULT --numclasses 3 --output-dir ../models/temp/ --lr 0.001 --lr-steps 30 60 90 --epochs 100 --evalepoch 30 --modelsave 30 --trainable-backbone-layers 5
@@ -13,6 +13,9 @@ python train_detector.py --data-path ../datasets/bird-detector/ --model fasterrc
 
 hierarchical classifiers
 python train_classifiers.py
+
+regional classifiers
+python train_regional_classifiers.py
 
 runtime
 python pytorch_runtime_detector.py --root ../models/bird-species-detector/ --backbone resnet101 --model FasterRCNN --device cuda --convert False --image ../datasets/trial/14d1c48321ae01c6bc9784e1eb44de10.JPG

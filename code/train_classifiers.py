@@ -12,25 +12,30 @@ import time
 import os
 import copy
 import json
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 import PIL
-from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+import numpy as np
+from sklearn.model_selection import train_test_split
 
 def get_args_parser(add_help=True):
     import argparse
 
     parser = argparse.ArgumentParser(description="PyTorch Hierarchical Classification Training", add_help=add_help)
 
-    parser.add_argument("--data-root", default="../datasets/bird-classifier-hierarchy/aves", type=str, help="path to dir containing ")
-    parser.add_argument("--output-root", default="../models/temp/aves", type=str, help="path to top level of hierarchical dataset")
+    parser.add_argument("--data-root", default="datasets/bird-detector/", type=str, help="path to dir containing regions")
+    parser.add_argument("--output-root", default="models/temp/", type=str, help="path to top level of regional dataset")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
     parser.add_argument("--batchsize", default=20, type=int, help="Batch size")
-    parser.add_argument("--epochs", default=5, type=int, help="Epochs")
+    parser.add_argument("--lr-steps", default=[1, 2, 3], nargs="+", type=int, help="decrease lr every step-size epochs (multisteplr scheduler only)")
+    parser.add_argument("--lr-gamma", default=0.1, type=float, help="decrease lr by a factor of lr-gamma (multisteplr scheduler only)")
+    parser.add_argument("--epochs", default=1000, type=int, help="Epochs")
+    parser.add_argument('--patience', default = 2, type = int, help = "How many epochs without improvement before action?")
     parser.add_argument("--printfreq", default=5, type=int, help="After how many batches do you want to print the loss")
     return parser
 
 def create_model(num_classes, device):
-    model = models.resnet50(weights='ResNet50_Weights.DEFAULT')
+    model = models.resnet101(weights='ResNet101_Weights.DEFAULT')
     features = model.fc.in_features
     model.fc = nn.Linear(features, num_classes)
     model = model.to(device)
@@ -41,7 +46,6 @@ class CustomDataloader(Dataset):
         self.transform = transform
         self.image_paths = image_paths
         self.labels = labels
-        self.class_to_idx = class_to_idx
         
     def __len__(self):
         return len(self.image_paths)
@@ -49,7 +53,7 @@ class CustomDataloader(Dataset):
     def __getitem__(self, index):
         image_path = self.image_paths[index]
         image = PIL.Image.open(image_path).convert('RGB')
-        label = torch.tensor(self.class_to_idx[self.labels[index]])
+        label = torch.tensor(self.labels[index])
         if self.transform is not None:
             image = self.transform(image)
         return image, label
@@ -57,23 +61,20 @@ class CustomDataloader(Dataset):
 def get_transform(train):
     trans = []
     if train:
-        trans.append(transforms.Resize(256))
-        trans.append(transforms.CenterCrop(224))
+        trans.append(transforms.RandomResizedCrop(size = 224, scale = (0.70, 1.3), ratio = (1.0, 1.0)))
         trans.append(transforms.RandomHorizontalFlip(0.5))
-        trans.append(transforms.ToTensor())
-        trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
-    else:
-        trans.append(transforms.Resize(256))
-        trans.append(transforms.CenterCrop(224))
-        trans.append(transforms.ToTensor())
-        trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+        trans.append(transforms.RandomRotation(degrees=(0, 360)))
+    trans.append(transforms.ToTensor())
+    trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     return transforms.Compose(trans)
 
-def train_model(model, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, num_epochs):
+def train_model(model, output_path, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, num_epochs):
     since = time.time()
-
+    writer = SummaryWriter(log_dir = output_path)
     best_model_wts = copy.deepcopy(model.state_dict())
     best_acc = 0.0
+    epochs_since_improvement = 0
+    lr_steps = 0
 
     for epoch in range(num_epochs):
         print(f'Epoch {epoch}/{num_epochs - 1}')
@@ -117,20 +118,37 @@ def train_model(model, train_loader, val_loader, train_size, val_size, device, c
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
                 if progress % args.printfreq == 0:
-                    print("Image: {}/{}    Loss: {}".format(progress, dataset_size / args.batchsize, running_loss/(progress * args.batchsize)))
-            if phase == 'train':
-                scheduler.step()
+                    print("LR: {}   Image: {}/{}    Loss: {}".format(optimizer.param_groups[0]["lr"], progress * args.batchsize, dataset_size, running_loss/(progress * args.batchsize)))
+
             epoch_loss = running_loss / dataset_size
+            # AP instead of accuracy
             epoch_acc = running_corrects.double() / dataset_size
 
             print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
-            # deep copy the model
-            if phase == 'val' and epoch_acc > best_acc:
-                best_acc = epoch_acc
-                best_model_wts = copy.deepcopy(model.state_dict())
-
-        print()
+            if phase == 'val':
+                writer.add_scalar("Acc", epoch_acc, epoch)
+                if epoch_acc > best_acc:
+                    print("The model improved this epoch")
+                    best_acc = epoch_acc
+                    epochs_since_improvement = 0
+                    best_model_wts = copy.deepcopy(model.state_dict())
+                else:
+                    epochs_since_improvement += 1
+                    print("The model has not improved for {} epochs...".format(epochs_since_improvement))
+        if epochs_since_improvement == args.patience:
+            print("{} epochs without improvement...".format(args.patience))
+            # load best model wts
+            model.load_state_dict(best_model_wts)
+            # decrease the learning rate, unless at last lr, then stop
+            if lr_steps < len(args.lr_steps):
+                print("Decreasing learning rate, step {}/{}".format(lr_steps, len(args.lr_steps)))
+                scheduler.step()
+                lr_steps += 1
+                epochs_since_improvement = 0
+            else:
+                writer.flush()
+                break
 
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
@@ -138,6 +156,7 @@ def train_model(model, train_loader, val_loader, train_size, val_size, device, c
 
     # load best model weights
     model.load_state_dict(best_model_wts)
+    torch.save(model.state_dict(), os.path.join(output_path, "model_best_state_dict.pth"))
     return model
 
 def main(args):
@@ -145,8 +164,9 @@ def main(args):
     # walk through dataset directory and get levels
     for root, dirs, files in os.walk(args.data_root):
         for file in files:
-            if file.endswith(".json"):
+            if file == "dataset.json":
                 file_path = os.path.join(root, file)
+                print(file_path)
                 with open(file_path) as anns:
                     dataset = json.load(anns)
                 # check if model directory exists, if not create it
@@ -156,34 +176,48 @@ def main(args):
                     os.makedirs(output_path)
                 # create train and val datasets
                 image_paths = dataset["images"]
-                image_paths = [os.path.join(args.data_root, "images", image_path) for image_path in image_paths]
+                image_paths = [os.path.join(args.data_root, "Images", image_path) for image_path in image_paths]
                 labels = dataset["labels"]
-                classes = list(set(labels))
+                # remove classes with only 1 occurance
+                classes, counts = np.unique(labels, return_counts=True)
+                classes = classes[np.where(counts > 1)]
+                labels, image_paths = zip(*[(a,b) for a,b in zip(labels,image_paths) if a in classes])
+                # save index_to_class for use when predicting
                 idx_to_class = {i:j for i, j in enumerate(classes)}
                 class_to_idx = {value:key for key,value in idx_to_class.items()}
-                # save idx_to_class fo use when predicting
-                with open(os.path.join(output_path, 'index_to_class.txt'), 'w') as f:
-                    json.dump(idx_to_class, f)
+                labels = [class_to_idx[labels[i]] for i in range(len(labels))]
+                with open(os.path.join(output_path, 'index_to_class.json'), 'w') as f:
+                    json.dump(idx_to_class, f, indent = 2)
                 # no point producing a model if there's only one class
                 if len(idx_to_class) > 1:
-                    dataset_train = CustomDataloader(image_paths, class_to_idx, labels, get_transform(train=True))
-                    dataset_val = CustomDataloader(image_paths, class_to_idx, labels, get_transform(train=False))
-                    train_size = int(0.85 * len(dataset_train))
-                    val_size = len(dataset_train) - train_size
-                    train_dataset, _ = torch.utils.data.random_split(dataset_train, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-                    _, val_dataset = torch.utils.data.random_split(dataset_val, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-                    train_loader = DataLoader(train_dataset, batch_size=min(len(image_paths), args.batchsize), shuffle=True)
-                    val_loader = DataLoader(val_dataset, batch_size=min(len(image_paths), args.batchsize), shuffle=True)
+                    # split data into val and train
+                    image_paths_train, image_paths_val, labels_train, labels_val = train_test_split(image_paths, labels, test_size=0.15, stratify=labels, random_state=42)
+                    # balanced batch sampler
+                    _, class_count_train = np.unique(labels_train, return_counts=True)
+                    weight = 1. / class_count_train
+                    samples_weight = np.array([weight[t] for t in labels_train])
+                    samples_weight = torch.from_numpy(samples_weight)
+                    sampler = WeightedRandomSampler(samples_weight.type('torch.DoubleTensor'), len(samples_weight))
+                    train_size = len(image_paths_train)
+                    val_size = len(image_paths_val)
+
+                    dataset_train = CustomDataloader(image_paths_train, class_to_idx, labels_train, get_transform(train=True))
+                    dataset_val = CustomDataloader(image_paths_val, class_to_idx, labels_val, get_transform(train=False))
+
+                    train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize), sampler = sampler)
+                    # train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize))
+                    val_loader = DataLoader(dataset_val, batch_size=min(len(image_paths_val), args.batchsize), shuffle=False)
                     # create model
-                    num_classes = len(list(set(dataset["labels"])))
+                    num_classes = len(classes)
                     model = create_model(num_classes, device)
                     # train model
                     criterion = nn.CrossEntropyLoss()
                     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-                    scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+                    # scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+                    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
                     print("Training {} detector".format(rel_root))
-                    model = train_model(model, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, args.epochs)
-                    torch.save(model.state_dict(), os.path.join(output_path, "model_final_state_dict.pth"))
+                    train_model(model, output_path, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, args.epochs)
+                    
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)

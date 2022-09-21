@@ -18,12 +18,12 @@ def search_for_file_path ():
 
 file_path_variable = search_for_file_path()
 
-with open(os.path.join(file_path_variable, "dataset.json")) as anns:
+with open(os.path.join(file_path_variable, "instances_train2017.json")) as anns:
     annotations = json.load(anns)
 index_to_class = {}
 for count in range(len(annotations["categories"])):
     species = annotations["categories"][count]["name"].split("_")[0]
     lifestage = annotations["categories"][count]["name"].split("_")[-1]
     index_to_class[str(count + 1)] = species + "-" + lifestage
-with open('../../models/temp/index_to_class.txt', 'w') as file:
+with open('../models/temp/index_to_class.txt', 'w') as file:
     file.write(json.dumps(index_to_class, indent = 4))

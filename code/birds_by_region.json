@@ -1,5 +1,6 @@
 {
     "North America": [
+        "anas platyrhynchos domesticus",
         "nothocercus bonapartei",
         "tinamus major",
         "crypturellus soui",
@@ -2269,6 +2270,7 @@
         "saltator grossus"
     ],
     "South America": [
+        "anas platyrhynchos domesticus",
         "rhea americana",
         "rhea pennata",
         "nothocercus julius",
@@ -5864,6 +5866,7 @@
         "saltator fuliginosus"
     ],
     "Europe": [
+        "anas platyrhynchos domesticus",
         "dendrocygna viduata",
         "anser indicus",
         "anser caerulescens",
@@ -6782,6 +6785,7 @@
         "spiza americana"
     ],
     "Africa": [
+        "anas platyrhynchos domesticus",
         "struthio camelus",
         "struthio molybdophanes",
         "dendrocygna viduata",
@@ -9494,6 +9498,7 @@
         "parkesia motacilla"
     ],
     "Asia": [
+        "anas platyrhynchos domesticus",
         "casuarius casuarius",
         "casuarius bennetti",
         "casuarius unappendiculatus",
@@ -13322,7 +13327,8 @@
         "passerina cyanea",
         "paroaria coronata"
     ],
-    "Oceana": [
+    "Oceania": [
+        "anas platyrhynchos domesticus",
         "struthio camelus",
         "casuarius casuarius",
         "casuarius bennetti",
@@ -15511,6 +15517,7 @@
         "melanospiza bicolor"
     ],
     "Antarctica": [
+        "anas platyrhynchos domesticus",
         "anas georgica",
         "chionis albus",
         "bartramia longicauda",

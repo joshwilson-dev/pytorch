@@ -61,12 +61,15 @@ if len(file_path_variable) > 0:
                 exif_bytes = piexif.dump(exif_dict)
                 try:
                     comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+                    gsd = float(comments["gsd"])
                 except:
+                    print("GSD NEEDED", file)
                     break
-                gsd = float(comments["gsd"])
                 annotation_name = os.path.splitext(file)[0] + ".json"
-                gsd_range = [0, 0.0075, 0.015]
-                gsd_class = ["fine", "coarse"]
+                gsd_range = [0, 0.015]
+                gsd_class = ["fine"]
+                if not os.path.exists("gsd_split/all"):
+                    os.makedirs("gsd_split/all")
                 for gsd_index in range(len(gsd_range) - 1):
                     gsd_min = gsd_range[gsd_index]
                     gsd_max = gsd_range[gsd_index + 1]
@@ -75,9 +78,14 @@ if len(file_path_variable) > 0:
                         os.makedirs("gsd_split/" + dir)
                     if gsd_min < gsd < gsd_max:
                         print("Copying:", file)
-                        # save image to directory
+                        # save image and annotation to current gsd dir
                         image_path = os.path.join("gsd_split", dir, file)
                         annotation_path = os.path.join("gsd_split", dir, annotation_name)
+                        shutil.copy(file, image_path)
+                        shutil.copy(annotation_name, annotation_path)
+                        # save image and annotation to all gsd dir
+                        image_path = os.path.join("gsd_split", "all", file)
+                        annotation_path = os.path.join("gsd_split", "all", annotation_name)
                         shutil.copy(file, image_path)
                         shutil.copy(annotation_name, annotation_path)
                     elif gsd < gsd_min:
@@ -102,6 +110,13 @@ if len(file_path_variable) > 0:
                         image_path = os.path.join("gsd_split", dir, md5hash + ".JPG")
                         transformed_img.save(image_path, exif = exif_bytes)
                         annotation_output = os.path.join("gsd_split", dir, md5hash + ".json")
+                        annotation["imagePath"] = md5hash + ".JPG"
+                        with open(annotation_output, 'w') as new_annotation:
+                            json.dump(annotation, new_annotation, indent=2)
+                        # save image and annotation to all gsd dir
+                        image_path = os.path.join("gsd_split", "all", md5hash + ".JPG")
+                        transformed_img.save(image_path, exif = exif_bytes)
+                        annotation_output = os.path.join("gsd_split", "all", md5hash + ".json")
                         annotation["imagePath"] = md5hash + ".JPG"
                         with open(annotation_output, 'w') as new_annotation:
                             json.dump(annotation, new_annotation, indent=2)

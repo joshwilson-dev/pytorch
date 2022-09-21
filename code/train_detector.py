@@ -332,7 +332,7 @@ def main(args):
         else:
             epochs_without_improvement += 1
             print("The model has not improved for {} epochs...".format(epochs_without_improvement))
-        if epochs_without_improvement > args.patience:
+        if epochs_without_improvement == args.patience:
             print("{} epochs without improvement...".format(args.patience))
             # load best model checkpoint
             checkpoint = torch.load(os.path.join(args.output_dir, 'model_best_checkpoint.pth'), map_location="cpu")
@@ -342,6 +342,7 @@ def main(args):
                 print("Decreasing learning rate...")
                 lr_scheduler.step()
                 lr_steps += 1
+                epochs_without_improvement = 0
             else:
                 writer.flush()
                 break

@@ -9,7 +9,7 @@ region_urls = {
     'Europe': 'https://avibase.bsc-eoc.org/checklist.jsp?region=EUR',
     'Africa': 'https://avibase.bsc-eoc.org/checklist.jsp?region=AFR',
     'Asia': 'https://avibase.bsc-eoc.org/checklist.jsp?region=ASI',
-    'Oceana': 'https://avibase.bsc-eoc.org/checklist.jsp?region=OCE',
+    'Oceania': 'https://avibase.bsc-eoc.org/checklist.jsp?region=OCE',
     'Antarctica': 'https://avibase.bsc-eoc.org/checklist.jsp?region=AQ'
 }
 data = {region: [] for region in region_urls}

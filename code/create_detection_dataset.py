@@ -18,58 +18,54 @@ from pickle import FALSE, TRUE
 from PIL import Image
 import math
 import hashlib
-import tkinter
-from tkinter import filedialog
-from tkinter import messagebox
 import piexif
+import os
+import shutil
 
 #################
 #### Content ####
 #################
 
-# create function for user to select dir
-root = tkinter.Tk()
-root.withdraw()
+def get_args_parser(add_help=True):
+    import argparse
 
-def search_for_file_path ():
-    currdir = os.getcwd()
-    tempdir = filedialog.askdirectory(
-        parent=root,
-        initialdir=currdir,
-        title='Please select a directory')
-    if len(tempdir) > 0:
-        print ("You chose: %s" % tempdir)
-    return tempdir
+    parser = argparse.ArgumentParser(description="Crop image & label dataset", add_help=add_help)
 
-file_path_variable = search_for_file_path()
-
-patch_size = 1333
-save_dir = "./crops/"
+    parser.add_argument("--datapath", default="datasets/bird-detector/original", type=str, help="dataset path")
+    parser.add_argument("--patchsize", default=1333, type=int, help="Size of patches")
+    return parser
 
 # did the user select a dir or cancel?
-if len(file_path_variable) > 0:
-    # confirm dir with user
-    check = messagebox.askquestion(
-        "CONFIRM",
-        "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
-    if check =="yes":
-        os.chdir(file_path_variable)
-        # check if save directory exists and if no create one 
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        # walk through image files and crop
-        for file in os.listdir():
-            if file.endswith(".JPG"):
-                # check if image is labelled
-                annotation_name = os.path.splitext(file)[0] + '.json'
-                if os.path.exists(annotation_name):
-                    print("Cropping", file)
-                    original_image = Image.open(file, mode="r")
+def main(**kwargs):
+    # change to directory
+    os.chdir(kwargs["datapath"])
+    # check if save directory exists and if no create one
+    if os.path.exists("../train2017"):
+        shutil.rmtree("../train2017")
+    os.makedirs("../train2017")
+    # walk through image files and crop
+    for file in os.listdir():
+        if file.endswith(".JPG"):
+            # check if image is labelled
+            annotation_name = os.path.splitext(file)[0] + '.json'
+            if os.path.exists(annotation_name):
+                print("Cropping", file)
+                original_image = Image.open(file, mode="r")
+                # get exif data
+                exif_dict = piexif.load(original_image.info['exif'])
+                exif_bytes = piexif.dump(exif_dict)
+                try:
+                    comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+                    gsd = float(comments["gsd"])
+                except:
+                    print("GSD NEEDED", file)
+                    break
+                if gsd < 0.015:
                     width, height = original_image.size
-                    n_crops_width = math.ceil(width / patch_size)
-                    n_crops_height = math.ceil(height / patch_size)
-                    padded_width = n_crops_width * patch_size
-                    padded_height = n_crops_height * patch_size
+                    n_crops_width = math.ceil(width / kwargs["patchsize"])
+                    n_crops_height = math.ceil(height / kwargs["patchsize"])
+                    padded_width = n_crops_width * kwargs["patchsize"]
+                    padded_height = n_crops_height * kwargs["patchsize"]
                     pad_width = (padded_width - width) / 2
                     pad_height = (padded_height - height) / 2
                     left = (padded_width/2) - (width/2)
@@ -78,14 +74,14 @@ if len(file_path_variable) > 0:
                     image.paste(original_image, (int(left), int(top)))
                     for height_index in range(0, n_crops_height):
                         for width_index in range(0, n_crops_width):
-                            left = width_index * patch_size
-                            right = left + patch_size
-                            top = height_index * patch_size
-                            bottom = top + patch_size
+                            left = width_index * kwargs["patchsize"]
+                            right = left + kwargs["patchsize"]
+                            top = height_index * kwargs["patchsize"]
+                            bottom = top + kwargs["patchsize"]
                             with open(annotation_name, 'r') as annotation:
                                 data = json.load(annotation)
-                                data["imageHeight"] = patch_size
-                                data["imageWidth"] = patch_size
+                                data["imageHeight"] = kwargs["patchsize"]
+                                data["imageWidth"] = kwargs["patchsize"]
                                 restart = TRUE
                                 boxes_kept = 0
                                 while restart == TRUE and boxes_kept != len(data["shapes"]):
@@ -132,13 +128,14 @@ if len(file_path_variable) > 0:
                                                 boxes_kept += 1
                                 
                                 if len(data["shapes"]) > 0:
-                                    # load exif data
-                                    exif_dict = piexif.load(original_image.info["exif"])
-                                    exif_bytes = piexif.dump(exif_dict)
                                     image_crop = image.crop((left, top, right, bottom))
                                     md5hash = hashlib.md5(image_crop.tobytes()).hexdigest()
-                                    image_crop.save(save_dir + md5hash + ".JPG", exif = exif_bytes)
-                                    annotation_output = save_dir + md5hash + ".json"
+                                    image_crop.save("../train2017/" + md5hash + ".JPG", exif = exif_bytes)
+                                    annotation_output = "../train2017/" + md5hash + ".json"
                                     data["imagePath"] = md5hash + ".JPG"
                                     with open(annotation_output, 'w') as new_annotation:
                                         json.dump(data, new_annotation, indent=2)
+
+if __name__ == "__main__":
+    kwargs = vars(get_args_parser().parse_args())
+    main(**kwargs)
