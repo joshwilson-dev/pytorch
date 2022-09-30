@@ -12,7 +12,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Create COCO annotation from labelme", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/bird-detector/train2017", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/seed-box/train2017", type=str, help="dataset path")
     return parser
 
 def main(**kwargs):
@@ -76,9 +76,9 @@ def main(**kwargs):
         annotation["annotations"][index]["segmentation"] = segmentation
     
     # make all classes bird
-    for index in range(len(annotation["annotations"])):
-        annotation["annotations"][index]["category_id"] = 1
-    annotation["categories"] = [{"id": 1, "name": "Bird","supercategory": "Bird"}]
+    # for index in range(len(annotation["annotations"])):
+    #     annotation["annotations"][index]["category_id"] = 1
+    # annotation["categories"] = [{"id": 1, "name": "Bird","supercategory": "Bird"}]
 
     # save to file
     annotation = json.dumps(annotation, indent=4)

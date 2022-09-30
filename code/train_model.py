@@ -1,7 +1,7 @@
 import os
 
 # Create the detection dataset
-# os.system("python code/create_detection_dataset.py --datapath datasets/bird-detector/original --patchsize 1333")
+os.system("python code/create_detection_dataset.py --datapath datasets/bird-detector/original --patchsize 1333")
 # Create the classification datasets
 os.system("python code/create_classification_datasets.py --datapath datasets/bird-detector")
 # Create coco annotation

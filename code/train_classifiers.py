@@ -205,7 +205,6 @@ def main(args):
                     dataset_val = CustomDataloader(image_paths_val, class_to_idx, labels_val, get_transform(train=False))
 
                     train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize), sampler = sampler)
-                    # train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize))
                     val_loader = DataLoader(dataset_val, batch_size=min(len(image_paths_val), args.batchsize), shuffle=False)
                     # create model
                     num_classes = len(classes)

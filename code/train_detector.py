@@ -184,7 +184,7 @@ def main(args):
     # dataset_test, _ = get_dataset(args.dataset, "val", get_transform(False, args), args.data_path, args.numclasses)
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
     dataset_test, _ = get_dataset(args.dataset, "train", get_transform(False, args), args.data_path, args.numclasses)
-    train_size = int(0.8 * len(dataset))
+    train_size = int(0.75 * len(dataset))
     test_size = len(dataset) - train_size
     dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
     _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
@@ -320,7 +320,7 @@ def main(args):
 
         # Josh Wilson
         results = evaluate(model, data_loader_test, device=device)
-        mAP = results.coco_eval["bbox"].stats[1]
+        mAP = results.coco_eval["bbox"].stats[0]
         writer.add_scalar("mAP", mAP, epoch)
         if mAP > best_mAP:
             print("The model improved this epoch")
@@ -337,6 +337,8 @@ def main(args):
             # load best model checkpoint
             checkpoint = torch.load(os.path.join(args.output_dir, 'model_best_checkpoint.pth'), map_location="cpu")
             model_without_ddp.load_state_dict(checkpoint["model"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
             # decrease the learning rate, unless at last lr, then stop
             if lr_steps < len(args.lr_steps) - 1:
                 print("Decreasing learning rate...")
