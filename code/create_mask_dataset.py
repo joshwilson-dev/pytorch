@@ -14,9 +14,9 @@
 #### Setup ####
 ###############
 
-from lib2to3.pgen2.pgen import DFAState
 import os
 import csv
+import math
 import tkinter
 from tkinter import filedialog
 from tkinter import messagebox
@@ -26,7 +26,7 @@ from pandas import json_normalize
 import piexif
 import pandas as pd
 import random
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance
 import numpy 
 import hashlib
 import torchvision.transforms as T
@@ -50,129 +50,9 @@ def search_for_file_path ():
         print ("You chose: %s" % tempdir)
     return tempdir
 
-def degrees(tag):
-    d = tag[0][0] / tag[0][1]
-    m = tag[1][0] / tag[1][1]
-    s = tag[2][0] / tag[2][1]
-    return d + (m / 60.0) + (s / 3600.0)
-
-def get_elevation(latitude, longitude):
-    query = ('https://api.open-elevation.com/api/v1/lookup'f'?locations={latitude},{longitude}')
-    # Request with a timeout for slow responses
-    r = get(query, timeout = 20)
-    # Only get the json response in case of 200 or 201
-    if r.status_code == 200 or r.status_code == 201:
-        elevation = json_normalize(r.json(), 'results')['elevation'].values[0]
-    else: 
-        elevation = None
-    return elevation
-
-def get_xmp(image_path):
-    # get xmp information
-    f = open(image_path, 'rb')
-    d = f.read()
-    xmp_start = d.find(b'<x:xmpmeta')
-    xmp_end = d.find(b'</x:xmpmeta')
-    xmp_str = (d[xmp_start:xmp_end+12]).lower()
-    # Extract dji info
-    dji_xmp_keys = ['relativealtitude']
-    dji_xmp = {}
-    for key in dji_xmp_keys:
-        search_str = (key + '="').encode("UTF-8")
-        value_start = xmp_str.find(search_str) + len(search_str)
-        value_end = xmp_str.find(b'"', value_start)
-        value = xmp_str[value_start:value_end]
-        dji_xmp[key] = float(value.decode('UTF-8'))
-    height = dji_xmp["relativealtitude"]
-    return height
-
-def get_gps(exif_dict):
-    latitude_tag = exif_dict['GPS'][piexif.GPSIFD.GPSLatitude]
-    longitude_tag = exif_dict['GPS'][piexif.GPSIFD.GPSLongitude]
-    latitude_ref = exif_dict['GPS'][piexif.GPSIFD.GPSLatitudeRef].decode("utf-8")
-    longitude_ref = exif_dict['GPS'][piexif.GPSIFD.GPSLongitudeRef].decode("utf-8")
-    latitude = degrees(latitude_tag)
-    longitude = degrees(longitude_tag)
-    latitude = -latitude if latitude_ref == 'S' else latitude
-    longitude = -longitude if longitude_ref == 'W' else longitude
-    return latitude, longitude
-
-def get_altitude(exif_dict):
-    altitude_tag = exif_dict['GPS'][piexif.GPSIFD.GPSAltitude]
-    altitude_ref = exif_dict['GPS'][piexif.GPSIFD.GPSAltitudeRef]
-    altitude = altitude_tag[0]/altitude_tag[1]
-    below_sea_level = altitude_ref != 0
-    altitude = -altitude if below_sea_level else altitude
-    return altitude
-
-def get_gsd(exif_dict, image_path, image_height, image_width):
-    print("Trying to get GSD")
-    # try to get gsd from comments
-    try:
-        comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
-        gsd = is_float(comments["gsd"])
-        print("Got GSD from comments")
-    except:
-        print("Couldn't get GSD from comments")
-        try:
-            print("Trying to calculate GSD from height and camera")
-            height = get_xmp(image_path)
-            print("Got height from xmp")
-        except:
-            print("Couldn't get height from xmp")
-            print("Trying to infer height from altitude and elevation a GPS")
-            height = 0
-            # try:
-            #     latitude, longitude = get_gps(exif_dict)
-            #     print("Got GPS from exif")
-            # except:
-            #     print("Couldn't get GPS")
-            #     return
-            # try:
-            #     altitude = get_altitude(exif_dict)
-            #     print("Got altiude from exif")
-            # except:
-            #     print("Couldn't get altitude")
-            #     return
-            # try:
-            #     elevation = get_elevation(latitude, longitude)
-            #     print("Got elevation from exif")
-            #     height = altitude - elevation
-            # except:
-            #     print("Couldn't get elevation")
-            #     return
-        try:
-            camera_model = exif_dict["0th"][piexif.ImageIFD.Model].decode("utf-8").rstrip('\x00')
-            print("Got camera model from exif")
-        except:
-            print("Couldn't get camera model from exif")
-            return
-        try:
-            sensor_width, sensor_length = sensor_size[camera_model]
-            print("Got sensor dimensions")
-        except:
-            print("Couldn't get sensor dimensions from sensor size dict")
-            return
-        try:
-            focal_length = exif_dict["Exif"][piexif.ExifIFD.FocalLength][0] / exif_dict["Exif"][piexif.ExifIFD.FocalLength][1]
-            print("Got focal length from exif")
-        except:
-            print("Couldn't get focal length from exif")
-            return
-        pixel_pitch = max(sensor_width / image_width, sensor_length / image_height)
-        gsd = height * pixel_pitch / focal_length
-        print("GSD: ", gsd)
-        return gsd
-
-def is_float(string):
-    try:
-        string = float(string)
-        return string
-    except: return string
-
 def crop_mask(im, points, label, gsd_cat):
     polygon = [tuple(l) for l in points]
-    pad = 1
+    pad = 100
     # find bounding box
     max_x = max([t[0] for t in polygon])
     min_x = min([t[0] for t in polygon])
@@ -208,18 +88,98 @@ def crop_mask(im, points, label, gsd_cat):
     newIm.save(os.path.join(path, name), format = "png")
     return [name, polygon]
 
-sensor_size = {
-    "FC220": [6.16, 4.55],
-    "FC330": [6.16, 4.62],
-    "FC7203": [6.3, 4.7],
-    "FC6520": [17.3, 13],
-    "FC6310": [13.2, 8.8],
-    "L1D-20c": [13.2, 8.8],
-    "Canon PowerShot G15": [7.44, 5.58],
-    "NX500": [23.50, 15.70],
-    "Canon PowerShot S100": [7.44, 5.58],
-    "Survey2_RGB": [6.17472, 4.63104]
-    }
+def balance_resolutions(category, labels, df, min_instances):
+    for label in labels:
+        for gsd_cat in reversed(gsd_cats):
+            count = df[df['label'] == label]
+            count = count[count['gsd_cat'] == gsd_cat]
+            count = len(count)
+            # if gsd does not have at least min_instances instances per gsd_cat:
+            # re-sample if very fine
+            # otherwise downscale images from high res
+            if count < min_instances:
+                min_gsd = gsd_bins[gsd_cats.index(gsd_cat)]
+                max_gsd = gsd_bins[gsd_cats.index(gsd_cat) + 1]
+                high_res = df[df['label'] == label]
+                high_res = high_res[high_res['gsd'] <= max_gsd]
+                downscale = high_res.sample(n=min_instances - count, replace=True)
+                # downscale['randnum'] = [x/10000 for x in random.sample(range(int(min_gsd * 10000), int(max_gsd * 10000)), downscale.shape[0])]
+                # downscale = downscale.assign(downscale=lambda df: df.randnum/df.gsd)
+                # downscale = downscale.drop("randnum", axis=1)
+                # downscale = downscale.reset_index(drop=True)
+                for index, row in downscale.iterrows():
+                    old_path = os.path.join(category, row["label"], row["gsd_cat"], row["id"])
+                    new_path = os.path.join(category, row["label"], gsd_cat)
+                    if not os.path.exists(new_path):
+                        os.makedirs(new_path)
+                    shutil.copy(old_path, os.path.join(new_path, row["id"]))
+                    # path = os.path.join(category, row["label"], row["gsd_cat"])
+                    # instance = Image.open(os.path.join(path, row["id"])).convert("RGBA")
+                    # size = min(instance.size) / row["downscale"]
+                    # instance = T.Resize(size=int(size))(instance)
+                    # # calculate md5#
+                    # md5hash = hashlib.md5(instance.tobytes()).hexdigest()
+                    # # save image
+                    # path = os.path.join(category, row["label"], gsd_cat)
+                    # if not os.path.exists(path):
+                    #     os.makedirs(path)
+                    # name = md5hash + ".png"
+                    # instance.save(os.path.join(path, name))
+                    # # resize points
+                    # if category == "instances":
+                    #     points = row["points"]
+                    #     points = tuple(tuple(item / row["downscale"] for item in point) for point in points)
+                    #     downscale.at[index,'points'] = points
+                    # downscale.at[index,'id'] = name
+                downscale = downscale.assign(gsd_cat=gsd_cat)
+                df = pd.concat([df, downscale])
+            # if gsd has more than instances_per_species instances drop it down to instances_per_species
+            elif count > min_instances:
+                drop = df[df['label'] == label]
+                drop = drop[drop['gsd_cat'] == gsd_cat]
+                drop = drop.sample(n=count - min_instances)
+                for index, row in drop:
+                    os.remove(os.path.join(category, row["label"], gsd_cat, row["id"]))
+                df.drop(drop.index)
+    return df
+
+def is_float(string):
+    try:
+        string = float(string)
+        return string
+    except: return string
+
+def rotate_point(point, centre, deg):
+    rotated_point = (
+        centre[0] + (point[0]-centre[0])*math.cos(math.radians(deg)) - (point[1]-centre[1])*math.sin(math.radians(deg)),
+        centre[1] + (point[0]-centre[0])*math.sin(math.radians(deg)) + (point[1]-centre[1])*math.cos(math.radians(deg)))
+    return rotated_point
+
+def transforms(instance, row, points=None):
+    # scale
+    min_gsd = gsd_bins[gsd_cats.index(row["instance_gsd_cat"])]
+    max_gsd = gsd_bins[gsd_cats.index(row["instance_gsd_cat"]) + 1]
+    scale = random.uniform(min_gsd, max_gsd)/row["instance_gsd"]
+    size = min(instance.size) / scale
+    instance = T.Resize(size=int(size))(instance)
+    # colour
+    colour = random.uniform(0.9, 1.1)
+    instance = ImageEnhance.Color(instance)
+    instance = instance.enhance(colour)
+    contrast = random.uniform(0.9, 1.1)
+    instance = ImageEnhance.Contrast(instance)
+    instance = instance.enhance(contrast)
+    brightness = random.uniform(0.9, 1.1)
+    instance = ImageEnhance.Brightness(instance)
+    instance = instance.enhance(brightness)
+    # points
+    if points != None:
+        # rotate
+        rotation = random.randint(0, 360)
+        instance = T.RandomRotation((rotation, rotation))(instance)
+        points = tuple(rotate_point(point, centre, -rotation) for point in points)
+        points = tuple(tuple(item / scale for item in point) for point in points)
+    return instance, points
 
 file_path_variable = search_for_file_path()
 
@@ -233,8 +193,8 @@ if len(file_path_variable) > 0:
         os.chdir(file_path_variable)
         # iterate through files in dir
         header = False
-        instances = {"species": [], "instance_gsd": [], "instance_gsd_cat": [], "instance_id": [], "instance_points": [], "instance_downsample": []}
-        backgrounds = {"substrate": [], "background_gsd": [], "background_gsd_cat": [],"background_id": [], "background_downsample": []}
+        instances = {"label": [], "gsd": [], "gsd_cat": [], "id": [], "points": [], "downscale": []}
+        backgrounds = {"label": [], "gsd": [], "gsd_cat": [], "id": [], "downscale": []}
         gsd_cats = ["very fine", "fine", "coarse", "very coarse"]
         gsd_bins = [0.004, 0.007, 0.01, 0.013, 0.016]
         paths = ["instances", "substrates", "dataset"]
@@ -264,12 +224,12 @@ if len(file_path_variable) > 0:
                         # add to dictionary
                         for instance in annotation["shapes"]:
                             instance_id, points = crop_mask(image.convert("RGBA"), instance["points"], instance["label"], gsd_cat)
-                            instances["species"].append(instance["label"])
-                            instances["instance_gsd"].append(gsd)
-                            instances["instance_gsd_cat"].append(gsd_cat)
-                            instances["instance_id"].append(instance_id)
-                            instances["instance_points"].append(points)
-                            instances["instance_downsample"].append(1)
+                            instances["label"].append(instance["label"])
+                            instances["gsd"].append(gsd)
+                            instances["gsd_cat"].append(gsd_cat)
+                            instances["id"].append(instance_id)
+                            instances["points"].append(points)
+                            instances["downscale"].append(1)
 
                 if "backgrounds" in root:
                     image_name = file
@@ -292,11 +252,11 @@ if len(file_path_variable) > 0:
                     name =  md5hash + ".png"
                     shutil.copy(image_path, os.path.join(path, name))
                     # add to dictionary
-                    backgrounds["substrate"].append(os.path.basename(root))
-                    backgrounds["background_gsd"].append(gsd)
-                    backgrounds["background_gsd_cat"].append(gsd_cat)
-                    backgrounds["background_id"].append(name)
-                    backgrounds["background_downsample"].append(1)
+                    backgrounds["label"].append(os.path.basename(root))
+                    backgrounds["gsd"].append(gsd)
+                    backgrounds["gsd_cat"].append(gsd_cat)
+                    backgrounds["id"].append(name)
+                    backgrounds["downscale"].append(1)
         # convert dictionary to df
         instances = pd.DataFrame(data=instances)
         backgrounds = pd.DataFrame(data=backgrounds)
@@ -304,107 +264,16 @@ if len(file_path_variable) > 0:
         instances = instances.dropna()
         backgrounds = backgrounds.dropna()
         # check that each species has enough instances in each gsd category
-        instances_per_species = 2
-        for species in instances.species.unique():
-            for gsd_cat in reversed(gsd_cats):
-                count = instances[instances['species'] == species]
-                count = count[instances['instance_gsd_cat'] == gsd_cat]
-                count = len(count)
-                # if gsd does not have at least instances_per_species instances per gsd_cat:
-                # re-sample if very fine
-                # otherwise downscale images from high res
-                if count < instances_per_species:
-                    min_gsd = gsd_bins[gsd_cats.index(gsd_cat)]
-                    max_gsd = gsd_bins[gsd_cats.index(gsd_cat) + 1]
-                    mean_gsd = (max_gsd - min_gsd)/2
-                    high_res = instances[instances['species'] == species]
-                    if gsd_cat == "very fine":
-                        high_res = high_res[instances['instance_gsd'] <= max_gsd]
-                    else:
-                        high_res = high_res[instances['instance_gsd'] <= min_gsd]
-                    downscale = high_res.sample(n=instances_per_species - count, replace=True)
-                    downscale = downscale.assign(instance_downsample=lambda df: random.uniform(min_gsd, max_gsd)/df.instance_gsd)
-                    downscale = downscale.reset_index(drop=True)
-                    for index, row in downscale.iterrows():
-                        path = os.path.join("instances", row["species"], row["instance_gsd_cat"])
-                        instance = Image.open(os.path.join(path, row["instance_id"])).convert("RGBA")
-                        size = max(instance.size) / row["instance_downsample"]
-                        instance = T.Resize(size=int(size))(instance)
-                        # calculate md5#
-                        md5hash = hashlib.md5(instance.tobytes()).hexdigest()
-                        # save image
-                        path = os.path.join("instances", row["species"], gsd_cat)
-                        if not os.path.exists(path):
-                            os.makedirs(path)
-                        name = md5hash + ".png"
-                        instance.save(os.path.join(path, name), format = "png")
-                        # resize points
-                        points = row["instance_points"]
-                        points = tuple(tuple(item / row["instance_downsample"] for item in one) for one in points)
-                        downscale.at[index,'instance_points'] = points
-                        downscale.at[index,'instance_id'] = name
-                    downscale = downscale.assign(instance_gsd_cat=gsd_cat)
-                    instances = pd.concat([instances, downscale])
-                # if gsd has more than instances_per_species instances drop it down to instances_per_species
-                elif count > instances_per_species:
-                    drop = instances[instances['species'] == species]
-                    drop = drop[drop['instance_gsd_cat'] == gsd_cat]
-                    drop = drop.sample(n=count - instances_per_species)
-                    for index, row in drop:
-                        os.remove(os.path.join("instances", row["species"], gsd_cat, row["instance_id"]))
-                    instances.drop(drop.index)
-
+        instances = balance_resolutions(category = "instances", labels = instances.label.unique(), df = instances, min_instances = 2)
         # check that each background has enough instances in each gsd category
-        backgrounds_per_gsd_cat = 2
-        for substrate in backgrounds.substrate.unique():
-            for gsd_cat in reversed(gsd_cats):
-                count = backgrounds[backgrounds['substrate'] == substrate]
-                count = count[backgrounds['background_gsd_cat'] == gsd_cat]
-                count = len(count)
-                # if gsd does not have at least backgrounds_per_gsd_cat instances per gsd_cat:
-                # re-sample if very fine
-                # otherwise downscale images from high res
-                if count < backgrounds_per_gsd_cat:
-                    min_gsd = gsd_bins[gsd_cats.index(gsd_cat)]
-                    max_gsd = gsd_bins[gsd_cats.index(gsd_cat) + 1]
-                    mean_gsd = (max_gsd - min_gsd)/2
-                    high_res = backgrounds[backgrounds['substrate'] == substrate]
-                    if gsd_cat == "very fine":
-                        high_res = high_res[backgrounds['background_gsd'] <= max_gsd]
-                    else:
-                        high_res = high_res[backgrounds['background_gsd'] <= min_gsd]
-                    downscale = high_res.sample(n=backgrounds_per_gsd_cat - count, replace=True)
-                    downscale = downscale.assign(background_downsample=lambda df: random.uniform(min_gsd, max_gsd)/df.background_gsd)
-                    downscale = downscale.reset_index(drop=True)
-                    for index, row in downscale.iterrows():
-                        path = os.path.join("substrates", row["substrate"], row["background_gsd_cat"])
-                        background = Image.open(os.path.join(path, row["background_id"])).convert("RGBA")
-                        size = max(background.size) / row["background_downsample"]
-                        background = T.Resize(size=int(size))(background)
-                        # calculate md5#
-                        md5hash = hashlib.md5(background.tobytes()).hexdigest()
-                        # save image
-                        path = os.path.join("substrates", row["substrate"], gsd_cat)
-                        if not os.path.exists(path):
-                            os.makedirs(path)
-                        name = md5hash + ".png"
-                        background.save(os.path.join(path, name), format = "png")
-                        downscale.at[index,'background_id'] = name
-                    downscale = downscale.assign(background_gsd_cat=gsd_cat)
-                    backgrounds = pd.concat([backgrounds, downscale])
-                # if gsd has more than backgrounds_per_gsd_cat instances drop it down to backgrounds_per_gsd_cat
-                elif count > backgrounds_per_gsd_cat:
-                    drop = backgrounds[backgrounds['substrate'] == substrate]
-                    drop = drop[drop['background_gsd_cat'] == gsd_cat]
-                    drop = drop.sample(n=count - backgrounds_per_gsd_cat)
-                    for index, row in drop:
-                        os.remove(os.path.join("substrates", row["substrate"], gsd_cat, row["background_id"]))
-                    backgrounds.drop(drop.index)
+        backgrounds = balance_resolutions(category = "substrates", labels = backgrounds.label.unique(), df = backgrounds, min_instances = 2)
         # place 1 instance of each species on each of the 2 background
         # images for each of 1 background types the until all 2
         # instances of each species have been placed 1 times
         # 2 * 1 * 2 = 4 images per gsd 16 total
         # add common column to merge by
+        backgrounds = backgrounds.add_prefix('background_')
+        instances = instances.add_prefix('instance_')
         instances["temp"] = 1
         backgrounds["temp"] = 1
         dataset = pd.DataFrame()
@@ -414,25 +283,25 @@ if len(file_path_variable) > 0:
             backgrounds = backgrounds.sample(n=len(backgrounds))
             rep = instances.merge(backgrounds, on='temp').drop('temp', axis=1)
             rep = rep[rep["instance_gsd_cat"] == rep["background_gsd_cat"]]
-            rep = rep.sort_values(by=['substrate', 'instance_gsd_cat', 'species'])
+            rep = rep.sort_values(by=['background_id'])
             dataset = pd.concat([dataset, rep])
         dataset.to_csv("dataset.csv")
         # actually create data
-        previous_background_path = "none"
+        prev_background_id = "none"
         path = "dataset"
         if not os.path.exists(path):
             os.makedirs(path)
         dataset = dataset.reset_index(drop=True)
         for index, row in dataset.iterrows():
-            background_path = os.path.join("substrates", row["substrate"], row["background_gsd_cat"], row["background_id"])
-            instance_path = os.path.join("instances", row["species"], row["instance_gsd_cat"], row["instance_id"])
-            if previous_background_path != background_path:
-                print(background_path)
-                if previous_background_path != "none":
+            background_path = os.path.join("substrates", row["background_label"], row["background_gsd_cat"], row["background_id"])
+            instance_path = os.path.join("instances", row["instance_label"], row["instance_gsd_cat"], row["instance_id"])
+            if prev_background_id != row["background_id"]:
+                if prev_background_id != "none":
                     md5hash = hashlib.md5(background.tobytes()).hexdigest()
                     image_name = md5hash + ".jpg"
                     label_name = md5hash + ".json"
                     background = background.convert("RGB")
+                    print(image_name)
                     background.save(os.path.join(path, image_name))
                     annotation = {
                         "version": "5.0.1",
@@ -446,28 +315,32 @@ if len(file_path_variable) > 0:
                     with open(os.path.join(path, label_name), 'w') as annotation_file:
                         annotation_file.write(annotation_str)
                 background = Image.open(background_path).convert("RGBA")
+                # transform background
+                background, _ = transforms(background, row)
                 width, height = background.size
                 annotation = {""}
-                previous_background_path = background_path
-                # transforms
+                prev_background_id = row["background_id"]
                 background_width, background_height = background.size
                 shapes = []
             instance = Image.open(instance_path).convert("RGBA")
             instance_width, instance_height = instance.size
+            centre = (instance_width/2, instance_height/2)
             left = random.randint(0, background_width - instance_width)
             top = random.randint(0, background_height - instance_height)
             points = row["instance_points"]
+            # transforms
+            instance, points = transforms(instance, row, points)
+            # paste instance on background
+            background.paste(instance, (left, top), instance)
+            # move points to pasted coordinates
             position = ((left, top))
             points = tuple(tuple(sum(x) for x in zip(a, position)) for a in points)
-            # rotate and scale points too
-            # transforms
-            background.paste(instance, (left, top), instance)
+            # make annotation file
             shapes.append({
-                "label": row["species"],
+                "label": row["instance_label"],
                 "points": points,
                 "group_id": 'null',
                 "shape_type": 'polygon',
                 "flags": {}})
-            # make annotation file
 
         #TODO make test set
