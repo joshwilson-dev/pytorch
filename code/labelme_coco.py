@@ -47,13 +47,13 @@ def main(**kwargs):
             if ann["id"] == index:
                 ann["id"] = index + 1
 
-    # add 5 pixels to bounding boxes
+    # add pixels to bounding boxes
     # for index in range(len(annotation["annotations"])):
     #     box = annotation["annotations"][index]["bbox"]
-    #     box[0] += -5
-    #     box[1] += -5
-    #     box[2] += 10
-    #     box[3] += 10
+    #     box[0] += -2
+    #     box[1] += -2
+    #     box[2] += 4
+    #     box[3] += 4
     #     area = box[2] * box[3]
     #     annotation["annotations"][index]["bbox"] = box
     #     annotation["annotations"][index]["area"] = area

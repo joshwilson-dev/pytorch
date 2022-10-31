@@ -33,7 +33,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Crop image & label dataset", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/seed-box/original", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask/dataset", type=str, help="dataset path")
     parser.add_argument("--patchsize", default=800, type=int, help="Size of patches")
     return parser
 
@@ -49,15 +49,15 @@ def main(**kwargs):
         os.makedirs(path)
     # walk through image files and crop
     for file in os.listdir():
-        if file.endswith(".JPG"):
+        if file.endswith(".jpg"):
             # check if image is labelled
             annotation_name = os.path.splitext(file)[0] + '.json'
             if os.path.exists(annotation_name):
                 print("Cropping", file)
                 original_image = Image.open(file, mode="r")
                 # get exif data
-                exif_dict = piexif.load(original_image.info['exif'])
-                exif_bytes = piexif.dump(exif_dict)
+                # exif_dict = piexif.load(original_image.info['exif'])
+                # exif_bytes = piexif.dump(exif_dict)
                 width, height = original_image.size
                 n_crops_width = math.ceil(width / kwargs["patchsize"])
                 n_crops_height = math.ceil(height / kwargs["patchsize"])
@@ -127,7 +127,7 @@ def main(**kwargs):
                             if len(data["shapes"]) > 0:
                                 image_crop = image.crop((left, top, right, bottom))
                                 md5hash = hashlib.md5(image_crop.tobytes()).hexdigest()
-                                image_crop.save("../train2017/" + md5hash + ".JPG", exif = exif_bytes)
+                                image_crop.save("../train2017/" + md5hash + ".JPG")#, exif = exif_bytes)
                                 annotation_output = "../train2017/" + md5hash + ".json"
                                 data["imagePath"] = md5hash + ".JPG"
                                 with open(annotation_output, 'w') as new_annotation:

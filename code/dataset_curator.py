@@ -116,7 +116,7 @@ if len(file_path_variable) > 0:
             for file in files:
                 if file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
                     image_file_path = os.path.join(root, file)
-                    if "ground" not in image_file_path and "dataset" not in image_file_path and "tool" not in image_file_path:
+                    if "tool" not in image_file_path: #"ground" not in image_file_path and "dataset" not in image_file_path:
                         print(image_file_path)
                         # get exif data
                         image = Image.open(image_file_path)
@@ -216,11 +216,12 @@ if len(file_path_variable) > 0:
                                 latitude = 0
                                 longitude = 0
                             print("calculating gsd...")
-                            # get ground elevation at drone location, if possible
-                            elevation = get_elevation(latitude, longitude)
                             # calculate drone height above surface
                             try: height
-                            except: height = altitude - elevation
+                            except:
+                                # get ground elevation at drone location, if possible
+                                elevation = get_elevation(latitude, longitude)
+                                height = altitude - elevation
                             # get the gsd & associated metrics
                             gsd, image_width, image_length, sensor_width, sensor_length, focal_length = get_gsd(exif_dict, height)
                             # write gsd and elevation to comments
@@ -246,52 +247,52 @@ if len(file_path_variable) > 0:
                             # Convert into bytes and dump into file
                             exif_bytes = piexif.dump(exif_dict)
                             piexif.insert(exif_bytes, image_file_path)
-                        annotation_file_path = os.path.splitext(os.path.abspath(image_file_path))[0] + ".json"
-                        with open('./dataset.csv', 'a+', newline='') as csvfile:
-                            fieldnames = [
-                                "filename",
-                                "location",
-                                "labelled",
-                                "latitude",
-                                "longitude",
-                                "altitude",
-                                "height",
-                                "elevation",
-                                "image_width",
-                                "image_length",
-                                "sensor_width",
-                                "sensor_length",
-                                "focal_length",
-                                "gimbalroll",
-                                "gimbalpitch",
-                                "gimbalyaw",
-                                "flightroll",
-                                "flightyaw",
-                                "flightpitch",
-                                "gsd"]
-                            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                            if header == False:
-                                writer.writeheader()
-                            writer.writerow({
-                                "filename": file,
-                                "location": root,
-                                "labelled": os.path.isfile(annotation_file_path),
-                                "latitude": latitude,
-                                "longitude": longitude,
-                                "altitude": altitude,
-                                "height": height,
-                                "elevation": elevation,
-                                "image_width": image_width,
-                                "image_length": image_length,
-                                "sensor_width": sensor_width,
-                                "sensor_length": sensor_length,
-                                "focal_length": focal_length,
-                                "gimbalroll": gimbalroll,
-                                "gimbalpitch": gimbalpitch,
-                                "gimbalyaw": gimbalyaw,
-                                "flightroll": flightroll,
-                                "flightyaw": flightyaw,
-                                "flightpitch": flightpitch,
-                                "gsd": gsd})
-                            header = True
+                        # annotation_file_path = os.path.splitext(os.path.abspath(image_file_path))[0] + ".json"
+                        # with open('./dataset.csv', 'a+', newline='') as csvfile:
+                        #     fieldnames = [
+                        #         "filename",
+                        #         "location",
+                        #         "labelled",
+                        #         "latitude",
+                        #         "longitude",
+                        #         "altitude",
+                        #         "height",
+                        #         "elevation",
+                        #         "image_width",
+                        #         "image_length",
+                        #         "sensor_width",
+                        #         "sensor_length",
+                        #         "focal_length",
+                        #         "gimbalroll",
+                        #         "gimbalpitch",
+                        #         "gimbalyaw",
+                        #         "flightroll",
+                        #         "flightyaw",
+                        #         "flightpitch",
+                        #         "gsd"]
+                        #     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                        #     if header == False:
+                        #         writer.writeheader()
+                        #     writer.writerow({
+                        #         "filename": file,
+                        #         "location": root,
+                        #         "labelled": os.path.isfile(annotation_file_path),
+                        #         "latitude": latitude,
+                        #         "longitude": longitude,
+                        #         "altitude": altitude,
+                        #         "height": height,
+                        #         "elevation": elevation,
+                        #         "image_width": image_width,
+                        #         "image_length": image_length,
+                        #         "sensor_width": sensor_width,
+                        #         "sensor_length": sensor_length,
+                        #         "focal_length": focal_length,
+                        #         "gimbalroll": gimbalroll,
+                        #         "gimbalpitch": gimbalpitch,
+                        #         "gimbalyaw": gimbalyaw,
+                        #         "flightroll": flightroll,
+                        #         "flightyaw": flightyaw,
+                        #         "flightpitch": flightpitch,
+                        #         "gsd": gsd})
+                        #     header = True
                         del height

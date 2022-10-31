@@ -3,6 +3,7 @@
 /venv-pytorch
 /wiener
 /images
+/trial
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

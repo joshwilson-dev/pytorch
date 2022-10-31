@@ -46,28 +46,31 @@ if len(file_path_variable) > 0:
     if check =="yes":
         os.chdir(file_path_variable)
         # iterate through files in dir
-        for file in os.listdir():
-            if file.endswith(".JPG"):
-                # calculate md5 and rename image
-                image_file = file
-                hash_md5 = hashlib.md5()
-                with open(image_file, "rb") as f:
-                    for chunk in iter(lambda: f.read(4096), b""):
-                        hash_md5.update(chunk)
-                output = hash_md5.hexdigest()
-                image_output = output + ".JPG"
-                os.rename(image_file, image_output)
-                # rename associated annotation file if it exists
-                annotation_file = os.path.splitext(file)[0] + ".json"
-                if os.path.isfile(annotation_file):
-                    annotation_output = output + ".json"
-                    os.rename(annotation_file, annotation_output)
+        for root, dirs, files in os.walk(os.getcwd()):
+            for file in files:
+                if file.endswith(".JPG"):
+                    # calculate md5 and rename image
+                    image_path = os.path.join(root, file)
+                    hash_md5 = hashlib.md5()
+                    with open(image_path, "rb") as f:
+                        for chunk in iter(lambda: f.read(4096), b""):
+                            hash_md5.update(chunk)
+                    output = hash_md5.hexdigest()
+                    image_output = os.path.join(root, output + ".JPG")
+                    os.rename(image_path, image_output)
+                    # rename associated annotation file if it exists
+                    annotation_file = os.path.splitext(file)[0] + ".json"
+                    if os.path.isfile(annotation_file):
+                        annotation_output = os.path.join(root, output + ".json")
+                        os.rename(annotation_file, annotation_output)
 
         # update annotation file to point to new name
-        for file in os.listdir():
-            if file.endswith(".json"):
-                with open(file, 'r') as f:
-                    data = json.load(f)
-                    data["imagePath"] = os.path.splitext(file)[0] + '.JPG'
-                with open(file, 'w') as f:
-                    json.dump(data, f, indent=2)
+        for root, dirs, files in os.walk(os.getcwd()):
+            for file in files:
+                if file.endswith(".json"):
+                    file_path = os.path.join(root, file)
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                        data["imagePath"] = os.path.splitext(file)[0] + '.JPG'
+                    with open(file_path, 'w') as f:
+                        json.dump(data, f, indent=2)

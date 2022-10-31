@@ -150,7 +150,7 @@ def get_region(exif_dict):
         print("Couldn't get GPS")
         return
     try:
-        shape_path = "World_Continents/World_Continents.shp"
+        shape_path = "World_Continents.shp"
         shp = shapefile.Reader(shape_path)
         all_shapes = shp.shapes()
         all_records = shp.records()
