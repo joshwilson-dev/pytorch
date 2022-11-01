@@ -24,7 +24,7 @@ import piexif
 import pandas as pd
 import random
 from PIL import Image, ImageDraw, ImageEnhance
-import numpy 
+import numpy as np
 import hashlib
 import torchvision.transforms as T
 import shutil
@@ -49,27 +49,30 @@ def search_for_file_path ():
 
 def crop_mask(im, points):
     polygon = [tuple(l) for l in points]
-    pad = 50
     # find bounding box
     max_x = max([t[0] for t in polygon])
     min_x = min([t[0] for t in polygon])
     max_y = max([t[1] for t in polygon])
     min_y = min([t[1] for t in polygon])
+    pad = 4
+    width = max_x - min_x + pad
+    height = max_y - min_y + pad
+    size = max(width, height)/2
     centre_x = min_x + (max_x - min_x) / 2
     centre_y = min_y + (max_y - min_y) / 2
     # make image a square with bird at centre
-    origin = [(centre_x - pad, centre_y - pad)] * len(polygon)
+    origin = [(centre_x - size, centre_y - size)] * len(polygon)
     polygon = tuple(tuple(a - b for a, b in zip(tup1, tup2))\
         for tup1, tup2 in zip(polygon, origin))
     # crop to bounding box
-    bird = im.crop((centre_x - pad, centre_y - pad, centre_x + pad, centre_y + pad))
+    bird = im.crop((centre_x - size, centre_y - size, centre_x + size, centre_y + size))
     # convert to numpy (for convenience)
-    imArray = numpy.asarray(bird)
+    imArray = np.asarray(bird)
     maskIm = Image.new('L', (imArray.shape[1], imArray.shape[0]), 0)
     ImageDraw.Draw(maskIm).polygon(polygon, outline=1, fill=1)
-    mask = numpy.array(maskIm)
+    mask = np.array(maskIm)
     # assemble new image (uint8: 0-255)
-    newImArray = numpy.empty(imArray.shape,dtype='uint8')
+    newImArray = np.empty(imArray.shape,dtype='uint8')
     # colors (three first columns, RGB)
     newImArray[:,:,:3] = imArray[:,:,:3]
     # transparency (4th column)
@@ -83,7 +86,7 @@ def crop_mask(im, points):
     newIm.save(os.path.join("instances", name), format = "png")
     return [name, polygon]
 
-def balance_resolutions(category, labels, df, min_instances):
+def balance_resolutions(labels, df, min_instances):
     for label in labels:
         for gsd_cat in reversed(gsd_cats):
             count = df[df['label'] == label]
@@ -131,9 +134,9 @@ def blackout_instance(image, points):
     image.paste(black_box, topleft)
     return image
 
-def transforms(instance, instance_gsd, random_gsd, points=None):
+def transforms(instance, instance_gsd, background_gsd, points=None):
     # scale
-    scale = random_gsd/instance_gsd
+    scale = background_gsd/instance_gsd
     size = min(instance.size) / scale
     instance = T.Resize(size=int(size))(instance)
     # colour
@@ -147,16 +150,59 @@ def transforms(instance, instance_gsd, random_gsd, points=None):
     instance = ImageEnhance.Brightness(instance)
     instance = instance.enhance(brightness)
     # random flip
+    # rotate
+    instance_width, instance_height = instance.size
+    centre = (instance_width/2, instance_height/2)
+    rotation = random.choice([0, 90, 180, 270])
+    instance = T.RandomRotation((rotation, rotation))(instance)
     # points
     if points != None:
         points = tuple(tuple(item / scale for item in point) for point in points)
-        # rotate
-        instance_width, instance_height = instance.size
-        centre = (instance_width/2, instance_height/2)
-        rotation = random.choice([0, 90, 180, 270])
-        instance = T.RandomRotation((rotation, rotation))(instance)
         points = tuple(rotate_point(point, centre, -rotation) for point in points)
     return instance, points
+
+def add_to_classifier(points, background):
+    # crop box with pad so we can random crop 
+    # to make classifier robust to box classifier error
+    pad = 2
+    box_left = min(x[0] for x in points) - pad
+    box_right = max(x[0] for x in points) + pad
+    box_top = min(x[1] for x in points) - pad
+    box_bottom = max(x[1] for x in points) + pad
+    instance = background.crop((box_left, box_top, box_right, box_bottom))
+    width, height = instance.size
+    width -= random.randint(0, 8)
+    height -= random.randint(0, 8)
+    # random crop
+    instance = T.RandomCrop(size = (height, width))(instance)
+    # pad crop to square and resize
+    max_dim = max(width, height)
+    if height > width:
+        pad = [int((height - width)/2) + 20, 20]
+    else:
+        pad = [20, int((width - height)/2) + 20]
+    instance = T.Pad(padding=pad)(instance)
+    instance = T.CenterCrop(size=max_dim)(instance)
+    instance = T.transforms.Resize(224)(instance)
+    
+    # determine image hash
+    md5hash = hashlib.md5(instance.tobytes()).hexdigest()
+    image_name = md5hash + ".JPG"
+    
+    # save image
+    instance = instance.convert("RGB")
+    instance.save(os.path.join("classifier_dataset", image_name))
+    # add image to corresponding regional dataset
+    label = row["instance_label"].split("_")
+    species = label[-2].split(" ")[0] + " " + label[-1]
+    classifiers["Global"]["images"].append(image_name)
+    classifiers["Global"]["labels"].append(species)
+    for region in regions:
+        if species in birds_by_region[region]:
+            # save label and image name into relveant label dict key
+            classifiers[region]["images"].append(image_name)
+            classifiers[region]["labels"].append(species)
+    return
 
 file_path_variable = search_for_file_path()
 # did the user select a dir or cancel?
@@ -164,20 +210,29 @@ if len(file_path_variable) > 0:
     # confirm dir with user
     check = messagebox.askquestion(
         "CONFIRM",
-        "Are you sure you want to curate the files in:\n" + file_path_variable)
+        "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
-        # iterate through files in dir
-        header = False
+        # create dictionaries to store data
         instances = {"label": [], "gsd": [], "gsd_cat": [], "id": [], "points": []}
         backgrounds = {"label": [], "gsd": [], "gsd_cat": [], "id": []}
+        classifiers = {}
+        # specify gsd categories
         gsd_cats = ["fine"]
-        gsd_bins = [0.004, 0.01]
-        paths = ["instances", "dataset"]
+        gsd_bins = [0.005, 0.01]
+        # specify regional categories
+        # load json containing birds in each region
+        birds_by_region = json.load(open("birds_by_region.json"))
+        regions = birds_by_region.keys()
+        for region in regions:
+            classifiers[region] = {"images": [], "labels": []}
+        classifiers["Global"] = {"images": [], "labels": []}
+        paths = ["instances", "detection_dataset/train", "classifier_dataset"]
         for path in paths:
             if os.path.exists(path):
                 shutil.rmtree(path)
             os.makedirs(path)
+        # iterate through backgrounds and labelled images
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
                 if file.endswith(".JPG"):
@@ -199,21 +254,21 @@ if len(file_path_variable) > 0:
                     gsd = is_float(comments["gsd"])
                     substrate = is_float(comments["ecosystem typology"])
                     try:
-                        gsd_cat = gsd_cats[numpy.digitize(gsd,gsd_bins) - 1]
-                        print("Adding background: ", file)
-
+                        gsd_cat = gsd_cats[np.digitize(gsd,gsd_bins) - 1]
+                        print("Adding backgrounds from: ", file)
                         # add to instanes dictionary if birds exist
                         if os.path.exists(annotation_path):
-                            print("Adding instances from: ", file)
                             annotation = json.load(open(annotation_path))
                             for instance in annotation["shapes"]:
-                                # crop out instances and save as image
-                                instance_id, points = crop_mask(original_image.convert("RGBA"), instance["points"])
-                                instances["label"].append(instance["label"])
-                                instances["gsd"].append(gsd)
-                                instances["gsd_cat"].append(gsd_cat)
-                                instances["id"].append(instance_id)
-                                instances["points"].append(points)
+                                # if polygon crop out instance and save as image
+                                if instance["shape_type"] == "polygon":
+                                    print("Adding instance from: ", file)
+                                    instance_id, points = crop_mask(original_image.convert("RGBA"), instance["points"])
+                                    instances["label"].append(instance["label"])
+                                    instances["gsd"].append(gsd)
+                                    instances["gsd_cat"].append(gsd_cat)
+                                    instances["id"].append(instance_id)
+                                    instances["points"].append(points)
                                 # blackout instance in original image to use as background
                                 original_image = blackout_instance(original_image, instance["points"])
                         # pad and crop images to patch size
@@ -243,7 +298,7 @@ if len(file_path_variable) > 0:
                                 backgrounds["gsd"].append(gsd)
                                 backgrounds["gsd_cat"].append(gsd_cat)
                                 backgrounds["id"].append(image_name)
-                    except Exception as e: print(e)
+                    except: print("Couldn't use:", file)
                     original_image.close()
                     os.remove(image_path)
 
@@ -253,12 +308,12 @@ if len(file_path_variable) > 0:
         # remove masks with unsuitable gsd values
         instances = instances.dropna()
         backgrounds = backgrounds.dropna()
-        min_instances = 10
-        min_backgrounds = 1
+        min_instances = 30
+        # min_backgrounds = 1
         # check that each species has enough instances in each gsd category
-        instances = balance_resolutions(category = "instances", labels = instances.label.unique(), df = instances, min_instances = min_instances)
+        instances = balance_resolutions(labels = instances.label.unique(), df = instances, min_instances = min_instances)
         # check that each background has enough instances in each gsd category
-        # backgrounds, number = balance_resolutions(category = "backgrounds", labels = backgrounds.label.unique(), df = backgrounds, min_instances = min_backgrounds, number = number)
+        # backgrounds, number = balance_resolutions(labels = backgrounds.label.unique(), df = backgrounds, min_instances = min_backgrounds, number = number)
         # add common column to merge by
         backgrounds = backgrounds.add_prefix('background_')
         # seperate out shadows
@@ -268,18 +323,19 @@ if len(file_path_variable) > 0:
         instances["temp"] = 1
         backgrounds["temp"] = 1
         dataset = pd.DataFrame()
-        # how many copies of each species per image
-        instance_repeats = 1
+        # how many instances per image?
+        instances_per_image = 4
         # how many copies of each background
         background_repeats = 1
         for repeat in range(background_repeats):
-            # randomly select instance_repeats from each species
-            sprites = instances.groupby('instance_label').apply(lambda x: x.sample(instance_repeats)).reset_index(drop=True)
-            backgrounds = backgrounds.sample(n=len(backgrounds))
-            rep = sprites.merge(backgrounds, on='temp').drop('temp', axis=1)
-            rep = rep[rep["instance_gsd_cat"] == rep["background_gsd_cat"]]
-            rep["background_repeat"] = repeat
-            dataset = pd.concat([dataset, rep])
+            for index, row in backgrounds.iterrows():
+                # randomly select instance_repeats from each species
+                sprites = instances[instances["instance_gsd_cat"] == row["background_gsd_cat"]]
+                sprites = sprites.groupby('instance_label').apply(lambda x: x.sample(1)).reset_index(drop=True)
+                sprites = sprites.sample(instances_per_image)
+                rep = sprites.merge(backgrounds.loc[[index]], on='temp').drop('temp', axis=1)
+                rep["background_repeat"] = repeat
+                dataset = pd.concat([dataset, rep])
         # fix order
         dataset = dataset.sort_values(by=["background_repeat", "background_id", "instance_label"])
         dataset = dataset.reset_index(drop=True)
@@ -288,38 +344,41 @@ if len(file_path_variable) > 0:
         num_species = len(dataset.instance_label.unique())
         # actually create and save images
         for index, row in dataset.iterrows():
-            if index % (num_species * instance_repeats) == 0:
+            if index % instances_per_image == 0:
                 background_path = os.path.join("backgrounds", row["background_id"])
                 background = Image.open(background_path).convert("RGBA")
                 # transform background
-                min_gsd = gsd_bins[gsd_cats.index(row["instance_gsd_cat"])]
-                max_gsd = gsd_bins[gsd_cats.index(row["instance_gsd_cat"]) + 1]
-                random_gsd = random.uniform(min_gsd, max_gsd)
-                background, _ = transforms(background, row["background_gsd"], random_gsd)
-                width, height = background.size
-                annotation = {""}
+                background, _ = transforms(background, row["background_gsd"], row["background_gsd"])
                 background_width, background_height = background.size
                 shapes = []
+                annotation = {""}
+                # determine random positions in background that don't overlap
+                gap = random.randint(100, 200)
+                x = np.linspace(20, background_width - 200, int((background_width - 200)/gap))
+                y = np.linspace(20, background_height - 200, int((background_height - 200)/gap))
+                xv, yv = np.meshgrid(x, y)
+                points = list(zip(xv.ravel(), yv.ravel()))
+                positions = random.sample(points, instances_per_image)
+                position_index = 0
             instance_path = os.path.join("instances", row["instance_id"])
             instance = Image.open(instance_path).convert("RGBA")
             shadow_row = shadows.sample(n=1)
             shadow_path = os.path.join("instances", shadow_row["instance_id"].item())
             shadow = Image.open(shadow_path).convert("RGBA")
             # transforms
-            instance, points = transforms(instance, row["instance_gsd"], random_gsd, row["instance_points"])
-            shadow, _ = transforms(shadow, shadow_row["instance_gsd"].item(), random_gsd, shadow_row["instance_points"].item())
+            instance, points = transforms(instance, row["instance_gsd"], row["background_gsd"], row["instance_points"])
+            shadow, _ = transforms(shadow, shadow_row["instance_gsd"].item(), row["background_gsd"], shadow_row["instance_points"].item())
             # paste instance on background
-            instance_width, instance_height = instance.size
-            left = random.randint(0, background_width - instance_width)
-            top = random.randint(0, background_height - instance_height)
-            shadow_offset = 10
+            left, top = tuple(map(int, positions[position_index]))
+            position_index += 1
+            # paste shadow under instance
+            shadow_offset = 8
             shadow_position_x = left + random.randint(-shadow_offset, shadow_offset)
             shadow_position_y = top + random.randint(-shadow_offset, shadow_offset)
             background.paste(shadow, (shadow_position_x, shadow_position_y), shadow)
             background.paste(instance, (left, top), instance)
             # move points to pasted coordinates
-            position = ((left, top))
-            points = tuple(tuple(sum(x) for x in zip(a, position)) for a in points)
+            points = tuple(tuple(sum(x) for x in zip(a, ((left, top)))) for a in points)
             # make annotation file
             shapes.append({
                 "label": row["instance_label"],
@@ -327,16 +386,16 @@ if len(file_path_variable) > 0:
                 "group_id": 'null',
                 "shape_type": 'polygon',
                 "flags": {}})
-            # add image to corresponding regional dataset
-            
+            # add instance to classification dataset
+            add_to_classifier(points, background)
             # save image if all instances have been paseted
-            if (index + 1) % (num_species * instance_repeats) == 0:
+            if (index + 1) % instances_per_image == 0:
                 print("Saving final image: background {}, gsd category {}".format(row["background_label"], row["instance_gsd_cat"]))
                 md5hash = hashlib.md5(background.tobytes()).hexdigest()
                 image_name = md5hash + ".jpg"
                 label_name = md5hash + ".json"
                 background = background.convert("RGB")
-                background.save(os.path.join(path, image_name))
+                background.save(os.path.join("detection_dataset/train", image_name))
                 annotation = {
                     "version": "5.0.1",
                     "flags": {},
@@ -346,7 +405,12 @@ if len(file_path_variable) > 0:
                     "imageHeight": height,
                     "imageWidth": width}
                 annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
-                with open(os.path.join(path, label_name), 'w') as annotation_file:
+                with open(os.path.join("detection_dataset/train", label_name), 'w') as annotation_file:
                     annotation_file.write(annotation_str)
-
+        # create classifier annotation files
+        for classifier in classifiers.keys():
+            dataset_path = os.path.join("classifier_dataset", classifier + ".json")
+            instance_annotations = json.dumps(classifiers[classifier], indent=2)
+            with open(dataset_path, "w") as instance_annotation_file:
+                instance_annotation_file.write(instance_annotations)
         #TODO make test set

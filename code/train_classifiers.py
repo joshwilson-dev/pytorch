@@ -23,7 +23,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="PyTorch Hierarchical Classification Training", add_help=add_help)
 
-    parser.add_argument("--data-root", default="datasets/bird-detector/", type=str, help="path to dir containing regions")
+    parser.add_argument("--data-root", default="datasets/bird-mask/classifier_dataset", type=str, help="path to dir containing regions")
     parser.add_argument("--output-root", default="models/temp/", type=str, help="path to top level of regional dataset")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
     parser.add_argument("--batchsize", default=20, type=int, help="Batch size")
@@ -61,9 +61,9 @@ class CustomDataloader(Dataset):
 def get_transform(train):
     trans = []
     if train:
-        trans.append(transforms.RandomResizedCrop(size = 224, scale = (0.70, 1.3), ratio = (1.0, 1.0)))
+        # trans.append(transforms.RandomResizedCrop(size = 224, scale = (0.70, 1.0), ratio = (1.0, 1.0)))
         trans.append(transforms.RandomHorizontalFlip(0.5))
-        trans.append(transforms.RandomRotation(degrees=(0, 360)))
+        # trans.append(transforms.RandomRotation(degrees=(0, 360)))
     trans.append(transforms.ToTensor())
     trans.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
     return transforms.Compose(trans)
@@ -133,6 +133,7 @@ def train_model(model, output_path, train_loader, val_loader, train_size, val_si
                     best_acc = epoch_acc
                     epochs_since_improvement = 0
                     best_model_wts = copy.deepcopy(model.state_dict())
+                    torch.save(model.state_dict(), os.path.join(output_path, "model_best_state_dict.pth"))
                 else:
                     epochs_since_improvement += 1
                     print("The model has not improved for {} epochs...".format(epochs_since_improvement))
@@ -161,22 +162,23 @@ def train_model(model, output_path, train_loader, val_loader, train_size, val_si
 
 def main(args):
     device = torch.device(args.device)
+    regions = ["Global.json"]
     # walk through dataset directory and get levels
     for root, dirs, files in os.walk(args.data_root):
         for file in files:
-            if file == "dataset.json":
+            if file in regions:
                 file_path = os.path.join(root, file)
                 print(file_path)
                 with open(file_path) as anns:
                     dataset = json.load(anns)
                 # check if model directory exists, if not create it
-                rel_root = root[len(args.data_root):]
-                output_path = args.output_root + rel_root
+                region = os.path.splitext(file)[0]
+                output_path = os.path.join(args.output_root, region)
                 if not os.path.exists(output_path):
                     os.makedirs(output_path)
                 # create train and val datasets
                 image_paths = dataset["images"]
-                image_paths = [os.path.join(args.data_root, "Images", image_path) for image_path in image_paths]
+                image_paths = [os.path.join(args.data_root, image_path) for image_path in image_paths]
                 labels = dataset["labels"]
                 # remove classes with only 1 occurance
                 classes, counts = np.unique(labels, return_counts=True)
@@ -193,18 +195,19 @@ def main(args):
                     # split data into val and train
                     image_paths_train, image_paths_val, labels_train, labels_val = train_test_split(image_paths, labels, test_size=0.15, stratify=labels, random_state=42)
                     # balanced batch sampler
-                    _, class_count_train = np.unique(labels_train, return_counts=True)
-                    weight = 1. / class_count_train
-                    samples_weight = np.array([weight[t] for t in labels_train])
-                    samples_weight = torch.from_numpy(samples_weight)
-                    sampler = WeightedRandomSampler(samples_weight.type('torch.DoubleTensor'), len(samples_weight))
+                    # _, class_count_train = np.unique(labels_train, return_counts=True)
+                    # weight = 1. / class_count_train
+                    # samples_weight = np.array([weight[t] for t in labels_train])
+                    # samples_weight = torch.from_numpy(samples_weight)
+                    # sampler = WeightedRandomSampler(samples_weight.type('torch.DoubleTensor'), len(samples_weight))
                     train_size = len(image_paths_train)
                     val_size = len(image_paths_val)
 
                     dataset_train = CustomDataloader(image_paths_train, class_to_idx, labels_train, get_transform(train=True))
                     dataset_val = CustomDataloader(image_paths_val, class_to_idx, labels_val, get_transform(train=False))
 
-                    train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize), sampler = sampler)
+                    # train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize), sampler = sampler)
+                    train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize))
                     val_loader = DataLoader(dataset_val, batch_size=min(len(image_paths_val), args.batchsize), shuffle=False)
                     # create model
                     num_classes = len(classes)
@@ -214,7 +217,7 @@ def main(args):
                     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
                     # scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
                     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
-                    print("Training {} detector".format(rel_root))
+                    print("Training {} classifier".format(region))
                     train_model(model, output_path, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, args.epochs)
                     
 if __name__ == "__main__":

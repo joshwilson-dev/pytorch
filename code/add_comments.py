@@ -14,7 +14,6 @@
 ###############
 
 import os
-import csv
 import tkinter
 from tkinter import filedialog
 from tkinter import messagebox
