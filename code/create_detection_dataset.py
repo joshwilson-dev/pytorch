@@ -33,7 +33,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Crop image & label dataset", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/seed-box/original", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask/dataset", type=str, help="dataset path")
     parser.add_argument("--patchsize", default=800, type=int, help="Size of patches")
     return parser
 
@@ -42,7 +42,7 @@ def main(**kwargs):
     # change to directory
     os.chdir(kwargs["datapath"])
     # check if save directory exists and if no create one
-    paths = ["../train2017", "../val2017"]
+    paths = ["../train", "../val"]
     for path in paths:
         if os.path.exists(path):
             shutil.rmtree(path)
@@ -124,14 +124,14 @@ def main(**kwargs):
                                             restart = False
                                             boxes_kept += 1
                             
-                            if len(data["shapes"]) > 0:
-                                image_crop = image.crop((left, top, right, bottom))
-                                md5hash = hashlib.md5(image_crop.tobytes()).hexdigest()
-                                image_crop.save("../train2017/" + md5hash + ".JPG", exif = exif_bytes)
-                                annotation_output = "../train2017/" + md5hash + ".json"
-                                data["imagePath"] = md5hash + ".JPG"
-                                with open(annotation_output, 'w') as new_annotation:
-                                    json.dump(data, new_annotation, indent=2)
+                            # if len(data["shapes"]) > 0:
+                            image_crop = image.crop((left, top, right, bottom))
+                            md5hash = hashlib.md5(image_crop.tobytes()).hexdigest()
+                            image_crop.save("../train/" + md5hash + ".JPG", exif = exif_bytes)
+                            annotation_output = "../train/" + md5hash + ".json"
+                            data["imagePath"] = md5hash + ".JPG"
+                            with open(annotation_output, 'w') as new_annotation:
+                                json.dump(data, new_annotation, indent=2)
     # # Create COCO annotations
     # os.chdir("../train2017")
     # # set path for coco json to be saved
