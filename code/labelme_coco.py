@@ -12,7 +12,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Create COCO annotation from labelme", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/bird-mask/detection_dataset/train", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask/images", type=str, help="dataset path")
     return parser
 
 def main(**kwargs):
