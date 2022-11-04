@@ -15,7 +15,7 @@ the number of epochs should be adapted so that we have the same number of iterat
 import datetime
 import os
 import time
-
+import csv
 import presets
 import torch
 import torch.utils.data
@@ -29,6 +29,7 @@ from group_by_aspect_ratio import GroupedBatchSampler, create_aspect_ratio_group
 from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
+from torchvision.models.detection.anchor_utils import AnchorGenerator
 
 def copypaste_collate_fn(batch):
     copypaste = SimpleCopyPaste(blending=True, resize_interpolation=InterpolationMode.BILINEAR)
@@ -163,6 +164,41 @@ def get_args_parser(add_help=True):
 
     return parser
 
+def save_eval(results):
+    #  catIds     - [all] K cat ids to use for evaluation
+    #  iouThrs    - [.5:.05:.95] T=10 IoU thresholds for evaluation
+    #  recThrs    - [0:.01:1] R=101 recall thresholds for evaluation
+    #  areaRng    - [all, small, medium, large] A=4 object area ranges for evaluation
+    #  maxDets    - [1 10 100] M=3 thresholds on max detections per image
+    #  params     - parameters used for evaluation
+    #  date       - date evaluation was performed
+    #  counts     - [T,R,K,A,M] parameter dimensions (see above)
+    #  precision  - [TxRxKxAxM] precision for every evaluation setting
+    #  recall     - [TxKxAxM] max recall for every evaluation setting
+    #  score      - [TxRxKxAxM] score for every evaluation setting
+    iouThrs = results.coco_eval["bbox"].eval["params"].iouThrs
+    recThrs = results.coco_eval["bbox"].eval["params"].recThrs
+    catIds = results.coco_eval["bbox"].eval["params"].catIds
+    areaRng = results.coco_eval["bbox"].eval["params"].areaRng
+    maxDets = results.coco_eval["bbox"].eval["params"].maxDets
+    result_dict = {'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': []}
+    for iouThr_index in range(len(iouThrs)):
+        for recThr_index in range(len(recThrs)):
+            for catId_index in range(len(catIds)):
+                for area_index in range(len(areaRng)):
+                    for maxDet_index in range(len(maxDets)):
+                        result_dict['iouThr'].append(iouThrs[iouThr_index])
+                        result_dict['recThr'].append(recThrs[recThr_index])
+                        result_dict['catId'].append(catIds[catId_index])
+                        result_dict['area'].append(areaRng[area_index])
+                        result_dict['maxDet'].append(maxDets[maxDet_index])
+                        result_dict['precision'].append(results.coco_eval["bbox"].eval["precision"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
+                        result_dict['scores'].append(results.coco_eval["bbox"].eval["scores"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
+    with open(os.path.join(args.output_dir, "performance_metrics.csv"), "w", newline='') as outfile:
+        writer = csv.writer(outfile)
+        writer.writerow(result_dict.keys())
+        writer.writerows(zip(*result_dict.values()))
+    return
 
 def main(args):
     if args.output_dir:
@@ -180,14 +216,13 @@ def main(args):
     print("Loading data")
     
     # Josh Wilson
-    # dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
-    # dataset_test, _ = get_dataset(args.dataset, "val", get_transform(False, args), args.data_path, args.numclasses)
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
     dataset_test, _ = get_dataset(args.dataset, "train", get_transform(False, args), args.data_path, args.numclasses)
     train_size = int(0.75 * len(dataset))
     test_size = len(dataset) - train_size
     dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
     _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
+    # _, dataset_test = torch.utils.data.random_split(dataset_test, [0, len(dataset_test)])
     # Josh Wilson
     print("Creating data loaders")
     if args.distributed:
@@ -222,7 +257,13 @@ def main(args):
 
     # Josh Wilson additions 01/07/2021
     if args.custommodel == 1:
-        kwargs = {"box_positive_fraction": args.box_positive_fraction}
+        # need to check if its fpn or not
+        anchor_sizes = ((16,), (32,), (64,), (128,), (256,))
+        aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
+        rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
+        kwargs = {
+            "rpn_anchor_generator": rpn_anchor_generator,
+            "box_positive_fraction": args.box_positive_fraction}
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
         model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone, **kwargs)
@@ -290,8 +331,9 @@ def main(args):
 
     if args.test_only:
         torch.backends.cudnn.deterministic = True
-        evaluate(model, data_loader_test, device=device)
-        return
+        results = evaluate(model, data_loader_test, device=device)
+        save_eval(results)
+
     # Josh Wilson
     from torch.utils.tensorboard import SummaryWriter
     writer = SummaryWriter(log_dir = args.output_dir)
@@ -325,8 +367,10 @@ def main(args):
         if mAP > best_mAP:
             print("The model improved this epoch")
             # save best model and state dict
+            print("Updating best model & results")
             utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
             utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
+            save_eval(results)
             best_mAP = mAP
             epochs_without_improvement = 0
         else:
