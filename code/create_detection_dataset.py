@@ -33,7 +33,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Crop image & label dataset", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/bird-mask/dataset", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask/shadow trial", type=str, help="dataset path")
     parser.add_argument("--patchsize", default=800, type=int, help="Size of patches")
     return parser
 
@@ -58,7 +58,7 @@ def main(**kwargs):
                 exif_dict = piexif.load(original_image.info['exif'])
                 comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
                 gsd = float(comments["gsd"])
-                if gsd > 0.0075:
+                if gsd > 0.02:
                     print("Resolution too low:", file)
                 else:
                     print("Cropping", file)
