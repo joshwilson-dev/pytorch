@@ -56,7 +56,10 @@ if len(file_path_variable) > 0:
                     annotation_file_path = os.path.join(root, file)
                     annotation_file_size = os.path.getsize(annotation_file_path)
                     if annotation_file_size > 100000:
-                        # annotation = json.load(open(file))
-                        # annotation["imageData"] = "null"
-                        # not done
-                        print(annotation_file_path, annotation_file_size)
+                        annotation_path = os.path.join(root, file)
+                        annotation = json.load(open(annotation_path))
+                        annotation["imageData"] = 'null'
+                        annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
+                        with open(annotation_path, 'w') as annotation_file:
+                            annotation_file.write(annotation_str)
+                        print("Removed image data from: ", file)

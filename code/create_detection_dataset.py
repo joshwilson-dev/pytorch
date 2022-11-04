@@ -33,7 +33,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Crop image & label dataset", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/seed-box/original", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask/shadow trial", type=str, help="dataset path")
     parser.add_argument("--patchsize", default=800, type=int, help="Size of patches")
     return parser
 
@@ -42,7 +42,7 @@ def main(**kwargs):
     # change to directory
     os.chdir(kwargs["datapath"])
     # check if save directory exists and if no create one
-    paths = ["../train2017", "../val2017"]
+    paths = ["../train", "../val"]
     for path in paths:
         if os.path.exists(path):
             shutil.rmtree(path)
@@ -53,82 +53,87 @@ def main(**kwargs):
             # check if image is labelled
             annotation_name = os.path.splitext(file)[0] + '.json'
             if os.path.exists(annotation_name):
-                print("Cropping", file)
                 original_image = Image.open(file, mode="r")
                 # get exif data
                 exif_dict = piexif.load(original_image.info['exif'])
-                exif_bytes = piexif.dump(exif_dict)
-                width, height = original_image.size
-                n_crops_width = math.ceil(width / kwargs["patchsize"])
-                n_crops_height = math.ceil(height / kwargs["patchsize"])
-                padded_width = n_crops_width * kwargs["patchsize"]
-                padded_height = n_crops_height * kwargs["patchsize"]
-                pad_width = (padded_width - width) / 2
-                pad_height = (padded_height - height) / 2
-                left = (padded_width/2) - (width/2)
-                top = (padded_height/2) - (height/2)
-                image = Image.new(original_image.mode, (padded_width, padded_height), "black")
-                image.paste(original_image, (int(left), int(top)))
-                for height_index in range(0, n_crops_height):
-                    for width_index in range(0, n_crops_width):
-                        left = width_index * kwargs["patchsize"]
-                        right = left + kwargs["patchsize"]
-                        top = height_index * kwargs["patchsize"]
-                        bottom = top + kwargs["patchsize"]
-                        with open(annotation_name, 'r') as annotation:
-                            data = json.load(annotation)
-                            data["imageHeight"] = kwargs["patchsize"]
-                            data["imageWidth"] = kwargs["patchsize"]
-                            restart = True
-                            boxes_kept = 0
-                            while restart == True and boxes_kept != len(data["shapes"]):
-                                for shape_index in range(boxes_kept, len(data["shapes"])):
-                                    box_x1 = min(x[0] for x in data["shapes"][shape_index]["points"]) + pad_width
-                                    box_x2 = max(x[0] for x in data["shapes"][shape_index]["points"]) + pad_width
-                                    box_y1 = min(x[1] for x in data["shapes"][shape_index]["points"]) + pad_height
-                                    box_y2 = max(x[1] for x in data["shapes"][shape_index]["points"]) + pad_height
+                comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+                gsd = float(comments["gsd"])
+                if gsd > 0.02:
+                    print("Resolution too low:", file)
+                else:
+                    print("Cropping", file)
+                    exif_bytes = piexif.dump(exif_dict)
+                    width, height = original_image.size
+                    n_crops_width = math.ceil(width / kwargs["patchsize"])
+                    n_crops_height = math.ceil(height / kwargs["patchsize"])
+                    padded_width = n_crops_width * kwargs["patchsize"]
+                    padded_height = n_crops_height * kwargs["patchsize"]
+                    pad_width = (padded_width - width) / 2
+                    pad_height = (padded_height - height) / 2
+                    left = (padded_width/2) - (width/2)
+                    top = (padded_height/2) - (height/2)
+                    image = Image.new(original_image.mode, (padded_width, padded_height), "black")
+                    image.paste(original_image, (int(left), int(top)))
+                    for height_index in range(0, n_crops_height):
+                        for width_index in range(0, n_crops_width):
+                            left = width_index * kwargs["patchsize"]
+                            right = left + kwargs["patchsize"]
+                            top = height_index * kwargs["patchsize"]
+                            bottom = top + kwargs["patchsize"]
+                            with open(annotation_name, 'r') as annotation:
+                                data = json.load(annotation)
+                                data["imageHeight"] = kwargs["patchsize"]
+                                data["imageWidth"] = kwargs["patchsize"]
+                                restart = True
+                                boxes_kept = 0
+                                while restart == True and boxes_kept != len(data["shapes"]):
+                                    for shape_index in range(boxes_kept, len(data["shapes"])):
+                                        box_x1 = min(x[0] for x in data["shapes"][shape_index]["points"]) + pad_width
+                                        box_x2 = max(x[0] for x in data["shapes"][shape_index]["points"]) + pad_width
+                                        box_y1 = min(x[1] for x in data["shapes"][shape_index]["points"]) + pad_height
+                                        box_y2 = max(x[1] for x in data["shapes"][shape_index]["points"]) + pad_height
 
-                                    box_left = min(box_x1, box_x2)
-                                    box_right = max(box_x1, box_x2)
-                                    box_top = min(box_y1, box_y2)
-                                    box_bottom = max(box_y1, box_y2)
-                                    box_width = box_right - box_left
-                                    box_height = box_bottom - box_top
-                                    box_area = box_width * box_height
+                                        box_left = min(box_x1, box_x2)
+                                        box_right = max(box_x1, box_x2)
+                                        box_top = min(box_y1, box_y2)
+                                        box_bottom = max(box_y1, box_y2)
+                                        box_width = box_right - box_left
+                                        box_height = box_bottom - box_top
+                                        box_area = box_width * box_height
 
-                                    if box_left > right or box_right < left or \
-                                        box_top > bottom or box_bottom < top:
-                                        del data["shapes"][shape_index]
-                                        restart = True
-                                        break
-                                    else:
-                                        if box_left < left: box_left = left
-                                        if box_right > right: box_right = right
-                                        if box_top < top: box_top = top
-                                        if box_bottom > bottom: box_bottom = bottom
-                                        new_box_width = box_right - box_left
-                                        new_box_height = box_bottom - box_top
-                                        new_box_area = new_box_width * new_box_height
-                                        if new_box_area < box_area:
-                                            # blackout part of image if box is cut off
-                                            topleft = (round(box_left), round(box_top))
-                                            black_box = Image.new("RGB", (round(new_box_width), round(new_box_height)))
-                                            image.paste(black_box, topleft)
+                                        if box_left > right or box_right < left or \
+                                            box_top > bottom or box_bottom < top:
                                             del data["shapes"][shape_index]
                                             restart = True
                                             break
                                         else:
-                                            for index in range(len(data["shapes"][shape_index]["points"])):
-                                                data["shapes"][shape_index]["points"][index][0] += - left + pad_width
-                                                data["shapes"][shape_index]["points"][index][1] += - top + pad_height
-                                            restart = False
-                                            boxes_kept += 1
-                            
-                            if len(data["shapes"]) > 0:
+                                            if box_left < left: box_left = left
+                                            if box_right > right: box_right = right
+                                            if box_top < top: box_top = top
+                                            if box_bottom > bottom: box_bottom = bottom
+                                            new_box_width = box_right - box_left
+                                            new_box_height = box_bottom - box_top
+                                            new_box_area = new_box_width * new_box_height
+                                            if new_box_area < box_area:
+                                                # blackout part of image if box is cut off
+                                                topleft = (round(box_left), round(box_top))
+                                                black_box = Image.new("RGB", (round(new_box_width), round(new_box_height)))
+                                                image.paste(black_box, topleft)
+                                                del data["shapes"][shape_index]
+                                                restart = True
+                                                break
+                                            else:
+                                                for index in range(len(data["shapes"][shape_index]["points"])):
+                                                    data["shapes"][shape_index]["points"][index][0] += - left + pad_width
+                                                    data["shapes"][shape_index]["points"][index][1] += - top + pad_height
+                                                restart = False
+                                                boxes_kept += 1
+                                
+                                # if len(data["shapes"]) > 0:
                                 image_crop = image.crop((left, top, right, bottom))
                                 md5hash = hashlib.md5(image_crop.tobytes()).hexdigest()
-                                image_crop.save("../train2017/" + md5hash + ".JPG", exif = exif_bytes)
-                                annotation_output = "../train2017/" + md5hash + ".json"
+                                image_crop.save("../train/" + md5hash + ".JPG", exif = exif_bytes)
+                                annotation_output = "../train/" + md5hash + ".json"
                                 data["imagePath"] = md5hash + ".JPG"
                                 with open(annotation_output, 'w') as new_annotation:
                                     json.dump(data, new_annotation, indent=2)
