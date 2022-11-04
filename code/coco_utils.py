@@ -239,8 +239,8 @@ def get_coco(root, image_set, transforms, mode="instances"):
 
     dataset = CocoDetection(img_folder, ann_file, transforms=transforms)
 
-    if image_set == "train":
-        dataset = _coco_remove_images_without_annotations(dataset)
+    # if image_set == "train":
+        # dataset = _coco_remove_images_without_annotations(dataset)
 
     # dataset = torch.utils.data.Subset(dataset, [i for i in range(500)])
 

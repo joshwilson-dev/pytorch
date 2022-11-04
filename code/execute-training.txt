@@ -1,6 +1,6 @@
 custom
 bird
-python code/train_detector.py --data-path datasets/bird-mask/detection_dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 2 --output-dir models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 1000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5
+python code/train_detector.py --data-path datasets/bird-mask/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 2 --output-dir models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 1000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5
 seed
 python code/train_detector.py --data-path datasets/seed-box/ --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 3 --output-dir models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 1000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 1
 

@@ -12,7 +12,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Create COCO annotation from labelme", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/bird-mask/images", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask/train", type=str, help="dataset path")
     return parser
 
 def main(**kwargs):
@@ -74,7 +74,16 @@ def main(**kwargs):
                 ]
             ]
         annotation["annotations"][index]["segmentation"] = segmentation
-    
+
+    # drop shadows
+    for index in range(len(annotation["categories"])):
+        if annotation["categories"][index]["name"] == "Shadow":
+            shadow_id = annotation["categories"][index]["id"]
+            del annotation["categories"][index]
+    for index in range(len(annotation["annotations"])):
+        if annotation["annotations"][index]["category_id"] == shadow_id:
+            del annotation["annotations"][index]
+
     # make all classes bird
     for index in range(len(annotation["annotations"])):
         annotation["annotations"][index]["category_id"] = 1
