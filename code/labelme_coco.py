@@ -74,7 +74,16 @@ def main(**kwargs):
                 ]
             ]
         annotation["annotations"][index]["segmentation"] = segmentation
-    
+
+    # drop shadows
+    for index in reversed(range(len(annotation["categories"]))):
+        if annotation["categories"][index]["name"] == "Shadow":
+            shadow_id = annotation["categories"][index]["id"]
+            del annotation["categories"][index]
+    for index in reversed(range(len(annotation["annotations"]))):
+        if annotation["annotations"][index]["category_id"] == shadow_id:
+            del annotation["annotations"][index]
+
     # make all classes bird
     for index in range(len(annotation["annotations"])):
         annotation["annotations"][index]["category_id"] = 1
