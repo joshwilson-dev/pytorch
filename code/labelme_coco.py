@@ -12,7 +12,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Create COCO annotation from labelme", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/bird-mask/train", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask-artificial - Copy/detection_dataset/train", type=str, help="dataset path")
     return parser
 
 def main(**kwargs):
@@ -48,15 +48,15 @@ def main(**kwargs):
                 ann["id"] = index + 1
 
     # add pixels to bounding boxes
-    # for index in range(len(annotation["annotations"])):
-    #     box = annotation["annotations"][index]["bbox"]
-    #     box[0] += -2
-    #     box[1] += -2
-    #     box[2] += 4
-    #     box[3] += 4
-    #     area = box[2] * box[3]
-    #     annotation["annotations"][index]["bbox"] = box
-    #     annotation["annotations"][index]["area"] = area
+    for index in range(len(annotation["annotations"])):
+        box = annotation["annotations"][index]["bbox"]
+        box[0] += -1
+        box[1] += -1
+        box[2] += 2
+        box[3] += 2
+        area = box[2] * box[3]
+        annotation["annotations"][index]["bbox"] = box
+        annotation["annotations"][index]["area"] = area
 
     # create mask from bounding box
     for index in range(len(annotation["annotations"])):
@@ -76,14 +76,14 @@ def main(**kwargs):
         annotation["annotations"][index]["segmentation"] = segmentation
 
     # drop shadows
-    shadow_ids = []
-    for index in reversed(range(len(annotation["categories"]))):
-        if "shadow" in annotation["categories"][index]["name"]:
-            shadow_ids.append(annotation["categories"][index]["id"])
-            del annotation["categories"][index]
-    for index in reversed(range(len(annotation["annotations"]))):
-        if annotation["annotations"][index]["category_id"] in shadow_ids:
-            del annotation["annotations"][index]
+    # shadow_ids = []
+    # for index in reversed(range(len(annotation["categories"]))):
+    #     if "shadow" in annotation["categories"][index]["name"]:
+    #         shadow_ids.append(annotation["categories"][index]["id"])
+    #         del annotation["categories"][index]
+    # for index in reversed(range(len(annotation["annotations"]))):
+    #     if annotation["annotations"][index]["category_id"] in shadow_ids:
+    #         del annotation["annotations"][index]
 
     # make all classes bird
     for index in range(len(annotation["annotations"])):

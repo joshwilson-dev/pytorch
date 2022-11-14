@@ -52,28 +52,18 @@ if len(file_path_variable) > 0:
         "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
-        mask_dataset = "dataset/masks"
-        background_dataset = "dataset/backgrounds"
-        for path in mask_dataset, background_dataset:
-            if os.path.exists(path):
-                shutil.rmtree(path)
-            os.makedirs(path)
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
-                if "dataset" not in root:
-                    if "fully annotated" in root:
-                        if file.endswith(".json"):
-                            annotation_file_name = file
-                            annotation_file_path = os.path.join(root, annotation_file_name)
-                            annotation = json.load(open(annotation_file_path))
-                            image_file_name = annotation["imagePath"]
-                            image_file_path = os.path.join(root, image_file_name)
-                            print(image_file_path)
-                            shutil.copyfile(image_file_path, os.path.join(mask_dataset, image_file_name))
-                            shutil.copyfile(annotation_file_path, os.path.join(mask_dataset, annotation_file_name))
-                    if "backgrounds" in root:
-                        if file.endswith(".JPG"):
-                            image_file_path = os.path.join(root, file)
-                            print(image_file_path)
-                            shutil.copyfile(image_file_path, os.path.join(background_dataset, file))
+                if file.endswith(".json"):
+                    annotation_file_name = file
+                    annotation_file_path = os.path.join(root, annotation_file_name)
+                    annotation = json.load(open(annotation_file_path))
+                    for index in reversed(range(len(annotation["shapes"]))):
+                        if "Shadow" in annotation["shapes"][index]["label"]:
+                            # annotation["shapes"][index]["label"] = "Pied Stilt_shadow"
+                            print(os.path.join(root, file))
+                    # save to file
+                    # annotation = json.dumps(annotation, indent=4)
+                    # with open(annotation_file_path, "w") as outfile:
+                    #     outfile.write(annotation)
