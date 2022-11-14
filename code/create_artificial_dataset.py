@@ -374,7 +374,12 @@ if len(file_path_variable) > 0:
         patches = pd.DataFrame(data=patches)
 
         # check balance of dataset
-        species_balance = (
+        instance_balance = patches.loc[patches['iou_type'] == "polygon"]
+        instance_balance = (
+            instance_balance
+            .groupby(['species'])
+            .size())
+        mask_balance = (
             patches
             .groupby(['species'])
             .size())
@@ -384,22 +389,25 @@ if len(file_path_variable) > 0:
             .first()
             .groupby(['substrate'])
             .size())
-        print(species_balance)
+        print(instance_balance)
+        print(mask_balance)
         print(substrate_balance)
 
-        # drop species with less than 50 instances
-        # keep only maximum overlap
+        # keep only instances with enough masks
+        species_counts = patches.loc[patches['iou_type'] == "polygon"]
         species_counts = (
-            patches
+            species_counts
             .sort_values('overlap', ascending=False)
             .drop_duplicates(['image_id','instance_id'])
             .species
             .value_counts())
-        # this creates issues
+        # Drop species without enough instances
+        min_instances = 100
+        test_instances = 25
         instances_per_patch = patches[
             patches
             .species
-            .isin(species_counts.index[species_counts.gt(10)])]
+            .isin(species_counts.index[species_counts.gt(min_instances)])]
         instances_per_patch = instances_per_patch[~patches['species'].str.contains('shadow')]
         instances_per_patch = instances_per_patch[~instances_per_patch['species'].str.contains('unknown')]
         instances_per_patch = (
@@ -415,7 +423,7 @@ if len(file_path_variable) > 0:
                 fill_value=0))
 
         # get the maximum number of images to keep instances less than threshold
-        test = solve(instances_per_patch, 10)
+        test = solve(instances_per_patch, test_instances)
         for column in test.columns:
             print(column, ": ", test[column].sum())
         test = test.reset_index()[["image_id", "patch_id"]]
@@ -489,11 +497,7 @@ if len(file_path_variable) > 0:
                 
         # create training data
         # seperate dataframe of masks and shadows
-        # drop species without enough instances
-        masks = train[
-            train
-            .species
-            .isin(species_counts.index[species_counts.gt(10)])]
+
         # only keep polygons
         masks = train[train['iou_type'] == "polygon"]
         # remove duplicates due to instance over
@@ -505,6 +509,11 @@ if len(file_path_variable) > 0:
             .drop_duplicates(['image_id','instance_id']))
         # split into instances and shadows
         shadows = masks[masks["species"].str.contains("shadow")]
+        # drop species without enough instances
+        masks = masks[
+            masks
+            .species
+            .isin(species_counts.index[species_counts.gt(min_instances)])]
         masks = masks[~masks["species"].str.contains("shadow")]
         # loop over backgrounds and paste on instances
         train = train.groupby('image_id')
