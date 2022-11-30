@@ -23,7 +23,7 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="PyTorch Hierarchical Classification Training", add_help=add_help)
 
-    parser.add_argument("--data-root", default="datasets/bird-mask/classifier_dataset", type=str, help="path to dir containing regions")
+    parser.add_argument("--data-root", default="datasets/bird-mask-new/classifier_dataset/train/artificial", type=str, help="path to dir containing regions")
     parser.add_argument("--output-root", default="models/temp/", type=str, help="path to top level of regional dataset")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
     parser.add_argument("--batchsize", default=20, type=int, help="Batch size")
@@ -162,63 +162,56 @@ def train_model(model, output_path, train_loader, val_loader, train_size, val_si
 
 def main(args):
     device = torch.device(args.device)
-    regions = ["Global.json"]
     # walk through dataset directory and get levels
     for root, dirs, files in os.walk(args.data_root):
         for file in files:
-            if file in regions:
+            # if file.endswith("json"):
+            if "Africa.json" in file:
                 file_path = os.path.join(root, file)
-                print(file_path)
                 with open(file_path) as anns:
                     dataset = json.load(anns)
-                # check if model directory exists, if not create it
-                region = os.path.splitext(file)[0]
-                output_path = os.path.join(args.output_root, region)
-                if not os.path.exists(output_path):
-                    os.makedirs(output_path)
-                # create train and val datasets
-                image_paths = dataset["images"]
-                image_paths = [os.path.join(args.data_root, image_path) for image_path in image_paths]
-                labels = dataset["labels"]
-                # remove classes with only 1 occurance
-                classes, counts = np.unique(labels, return_counts=True)
-                classes = classes[np.where(counts > 1)]
-                labels, image_paths = zip(*[(a,b) for a,b in zip(labels,image_paths) if a in classes])
-                # save index_to_class for use when predicting
-                idx_to_class = {i:j for i, j in enumerate(classes)}
-                class_to_idx = {value:key for key,value in idx_to_class.items()}
-                labels = [class_to_idx[labels[i]] for i in range(len(labels))]
-                with open(os.path.join(output_path, 'index_to_class.json'), 'w') as f:
-                    json.dump(idx_to_class, f, indent = 2)
-                # no point producing a model if there's only one class
-                if len(idx_to_class) > 1:
-                    # split data into val and train
-                    image_paths_train, image_paths_val, labels_train, labels_val = train_test_split(image_paths, labels, test_size=0.15, stratify=labels, random_state=42)
-                    # balanced batch sampler
-                    # _, class_count_train = np.unique(labels_train, return_counts=True)
-                    # weight = 1. / class_count_train
-                    # samples_weight = np.array([weight[t] for t in labels_train])
-                    # samples_weight = torch.from_numpy(samples_weight)
-                    # sampler = WeightedRandomSampler(samples_weight.type('torch.DoubleTensor'), len(samples_weight))
-                    train_size = len(image_paths_train)
-                    val_size = len(image_paths_val)
+                if len(dataset["images"]) > 0:
+                    # check if model directory exists, if not create it
+                    region = os.path.splitext(file)[0]
+                    output_path = os.path.join(args.output_root, region)
+                    if not os.path.exists(output_path):
+                        os.makedirs(output_path)
+                    # create train and val datasets
+                    image_paths = dataset["images"]
+                    image_paths = [os.path.join(args.data_root, image_path) for image_path in image_paths]
+                    labels = dataset["labels"]
+                    # remove classes with only 1 occurance
+                    classes, counts = np.unique(labels, return_counts=True)
+                    classes = classes[np.where(counts > 1)]
+                    labels, image_paths = zip(*[(a,b) for a,b in zip(labels,image_paths) if a in classes])
+                    # save index_to_class for use when predicting
+                    idx_to_class = {i:j for i, j in enumerate(classes)}
+                    class_to_idx = {value:key for key,value in idx_to_class.items()}
+                    labels = [class_to_idx[labels[i]] for i in range(len(labels))]
+                    with open(os.path.join(output_path, 'index_to_class.json'), 'w') as f:
+                        json.dump(idx_to_class, f, indent = 2)
+                    # no point producing a model if there's only one class
+                    if len(idx_to_class) > 1:
+                        # split data into val and train
+                        image_paths_train, image_paths_val, labels_train, labels_val = train_test_split(image_paths, labels, test_size=0.15, stratify=labels, random_state=42)
 
-                    dataset_train = CustomDataloader(image_paths_train, class_to_idx, labels_train, get_transform(train=True))
-                    dataset_val = CustomDataloader(image_paths_val, class_to_idx, labels_val, get_transform(train=False))
+                        train_size = len(image_paths_train)
+                        val_size = len(image_paths_val)
 
-                    # train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize), sampler = sampler)
-                    train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize))
-                    val_loader = DataLoader(dataset_val, batch_size=min(len(image_paths_val), args.batchsize), shuffle=False)
-                    # create model
-                    num_classes = len(classes)
-                    model = create_model(num_classes, device)
-                    # train model
-                    criterion = nn.CrossEntropyLoss()
-                    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-                    # scheduler = lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
-                    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
-                    print("Training {} classifier".format(region))
-                    train_model(model, output_path, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, args.epochs)
+                        dataset_train = CustomDataloader(image_paths_train, class_to_idx, labels_train, get_transform(train=True))
+                        dataset_val = CustomDataloader(image_paths_val, class_to_idx, labels_val, get_transform(train=False))
+
+                        train_loader = DataLoader(dataset_train, batch_size=min(len(image_paths_train), args.batchsize))
+                        val_loader = DataLoader(dataset_val, batch_size=min(len(image_paths_val), args.batchsize), shuffle=False)
+                        # create model
+                        num_classes = len(classes)
+                        model = create_model(num_classes, device)
+                        # train model
+                        criterion = nn.CrossEntropyLoss()
+                        optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+                        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.lr_steps, gamma=args.lr_gamma)
+                        print("Training {} classifier".format(region))
+                        train_model(model, output_path, train_loader, val_loader, train_size, val_size, device, criterion, optimizer, scheduler, args.epochs)
                     
 if __name__ == "__main__":
     args = get_args_parser().parse_args()

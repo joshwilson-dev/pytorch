@@ -12,16 +12,16 @@ def get_args_parser(add_help=True):
 
     parser = argparse.ArgumentParser(description="Create COCO annotation from labelme", add_help=add_help)
 
-    parser.add_argument("--datapath", default="datasets/bird-mask-artificial - Copy/detection_dataset/train", type=str, help="dataset path")
+    parser.add_argument("--datapath", default="datasets/bird-mask-new/detector_dataset/artificial/train", type=str, help="dataset path")
     return parser
 
 def main(**kwargs):
     os.chdir(kwargs["datapath"])
 
     # set path for coco json to be saved
-    if os.path.exists("../annotations"):
-        shutil.rmtree("../annotations")
-    os.makedirs("../annotations")
+    # if os.path.exists("../annotations"):
+    #     shutil.rmtree("../annotations")
+    # os.makedirs("../annotations")
     save_json_path = "../annotations"
 
     # convert labelme annotations to coco
@@ -48,32 +48,32 @@ def main(**kwargs):
                 ann["id"] = index + 1
 
     # add pixels to bounding boxes
-    for index in range(len(annotation["annotations"])):
-        box = annotation["annotations"][index]["bbox"]
-        box[0] += -1
-        box[1] += -1
-        box[2] += 2
-        box[3] += 2
-        area = box[2] * box[3]
-        annotation["annotations"][index]["bbox"] = box
-        annotation["annotations"][index]["area"] = area
+    # for index in range(len(annotation["annotations"])):
+    #     box = annotation["annotations"][index]["bbox"]
+    #     box[0] += -1
+    #     box[1] += -1
+    #     box[2] += 2
+    #     box[3] += 2
+    #     area = box[2] * box[3]
+    #     annotation["annotations"][index]["bbox"] = box
+    #     annotation["annotations"][index]["area"] = area
 
     # create mask from bounding box
-    for index in range(len(annotation["annotations"])):
-        box = annotation["annotations"][index]["bbox"]
-        segmentation = [
-            [
-                box[0],
-                box[1],
-                box[0] + box[2],
-                box[1],
-                box[0] + box[2],
-                box[1] + box[3],
-                box[0],
-                box[1] + box[3]
-                ]
-            ]
-        annotation["annotations"][index]["segmentation"] = segmentation
+    # for index in range(len(annotation["annotations"])):
+    #     box = annotation["annotations"][index]["bbox"]
+    #     segmentation = [
+    #         [
+    #             box[0],
+    #             box[1],
+    #             box[0] + box[2],
+    #             box[1],
+    #             box[0] + box[2],
+    #             box[1] + box[3],
+    #             box[0],
+    #             box[1] + box[3]
+    #             ]
+    #         ]
+    #     annotation["annotations"][index]["segmentation"] = segmentation
 
     # drop shadows
     # shadow_ids = []

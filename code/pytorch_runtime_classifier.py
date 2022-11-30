@@ -23,7 +23,7 @@ def prepare_image(image_path):
     image = image.to(device)
     return image
 
-root = "models/temp/Global/"
+root = "../models/full-model/bird-classifier/Oceania/"
 
 idx_to_class = json.load(open(root + "index_to_class.json"))
 number_classes = len(idx_to_class)
@@ -34,8 +34,17 @@ device = torch.device("cuda")
 model = model.to(device)
 model.load_state_dict(torch.load(root + "model_best_state_dict.pth"))
 model.eval()
-prediction = model(prepare_image("datasets/test/masked lapwing - 1.jpg"))[0]
-prediction = F.softmax(prediction, dim=0).tolist()
+batch = prepare_image("../datasets/test/masked lapwing - 1.jpg")
+batch = torch.cat((batch, prepare_image("../datasets/test/australian pelican - 1.jpg")), 0)
+prediction = model(batch)
 print(prediction)
-species = idx_to_class[str(prediction.index(max(prediction)))]
-print(species)
+prediction1 = F.softmax(prediction[0], dim=0).tolist()
+species1 = idx_to_class[str(prediction1.index(max(prediction1)))]
+prediction2 = F.softmax(prediction[0], dim=0).tolist()
+species2 = idx_to_class[str(prediction2.index(max(prediction2)))]
+print(species1, species2)
+for i in range(len(prediction)):
+ prediction[i] = F.softmax(prediction[i], dim=0)
+print(prediction1)
+print(prediction2)
+print(prediction)

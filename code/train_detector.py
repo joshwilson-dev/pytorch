@@ -217,12 +217,13 @@ def main(args):
     
     # Josh Wilson
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
+    # dataset_test, _ = get_dataset(args.dataset, "test", get_transform(False, args), args.data_path, args.numclasses)
+    
     dataset_test, _ = get_dataset(args.dataset, "train", get_transform(False, args), args.data_path, args.numclasses)
     train_size = int(0.75 * len(dataset))
     test_size = len(dataset) - train_size
     dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
     _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
-    # _, dataset_test = torch.utils.data.random_split(dataset_test, [0, len(dataset_test)])
     # Josh Wilson
     print("Creating data loaders")
     if args.distributed:
@@ -257,11 +258,12 @@ def main(args):
 
     # Josh Wilson additions 01/07/2021
     if args.custommodel == 1:
-        # need to check if its fpn or not
-        anchor_sizes = ((16,), (32,), (64,), (128,), (256,))
+        anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
         aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
         rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
         kwargs = {
+            "box_fg_iou_thresh": 0.7,
+            "box_bg_iou_thresh": 0.3,
             "rpn_anchor_generator": rpn_anchor_generator,
             "box_positive_fraction": args.box_positive_fraction}
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
