@@ -30,6 +30,7 @@ import torchvision.transforms as T
 import shutil
 from ortools.sat.python import cp_model
 import sys
+import imagehash
 
 #################
 #### Content ####
@@ -227,6 +228,63 @@ def add_to_classifier(instance, test_train, patch, image_id):
             classifiers[test_train][region]["labels"].append(instance["species"])
     return
 
+def save_dataset(dataset, test_train, patchsize):
+    dataset = dataset.groupby('image_id')
+    for image_id, patches in dataset:
+        # load the image
+        image = Image.open(image_id)
+        # read exif data
+        exif_dict = piexif.load(original_image.info['exif'])
+        comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+        comments["original_image"] = image_id
+        # group image data by patch
+        patches = patches.groupby('patch_points')
+        # iterate over patches
+        for patch_points, instances in patches:
+            # correct gsd
+            comments["gsd"] = instances["gsd"].iloc[0]
+            exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
+            exif_bytes = piexif.dump(exif_dict)
+            # crop image
+            patch = image.crop(patch_points)
+            # iterate over instances
+            shapes = []
+            for index, instance in instances.iterrows():
+                # crop and save instance if overlap greater than 0.5
+                if instance["box"] != "null":
+                    if instance["overlap"] == 1.0 and instance["species"] in included_species and instance["iou_type"] == "polygon":
+                        add_to_classifier(instance, test_train, patch, image_id)
+                        # create annotation file
+                        shapes.append({
+                            "label": instance["species"],
+                            "points": instance["patch_mask"],
+                            "group_id": 'null',
+                            "shape_type": 'polygon',
+                            "flags": {}})
+                    # blackout instance in image if overlap less than 0.5
+                    # or is a species not included
+                    elif "shadow" not in instance["species"]:
+                        patch = blackout_instance(patch, instance["box"])
+            # calculate md5 for cropped image
+            md5hash = hashlib.md5(patch.tobytes()).hexdigest()
+            patch_id = md5hash + ".JPG"
+            # save patch
+            patch.save(os.path.join("detector_dataset", test_train, patch_id), exif = exif_bytes)
+            # save annotation
+            annotation_id = md5hash + '.json'
+            annotation = {
+                "version": "5.0.1",
+                "flags": {},
+                "shapes": shapes,
+                "imagePath": patch_id,
+                "imageData": 'null',
+                "imageHeight": patchsize,
+                "imageWidth": patchsize}
+            annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
+            with open(os.path.join("detector_dataset", test_train, annotation_id), 'w') as annotation_file:
+                annotation_file.write(annotation_str)
+    return
+
 file_path_variable = search_for_file_path()
 # did the user select a dir or cancel?
 if len(file_path_variable) > 0:
@@ -237,7 +295,7 @@ if len(file_path_variable) > 0:
     if check =="yes":
         os.chdir(file_path_variable)
         # create dictionaries to store data
-        patches = {"substrate": [], "gsd": [], "gsd_cat": [], "target_gsd": [], "image_id": [], "patchsize": [], "patch_id": [], "patch_points": [], "species": [], "instance_id": [], "instance_path": [], "instance_mask": [], "patch_mask": [], "box": [], "iou_type": [], "overlap": [], "test": []}
+        patches = {"substrate": [], "gsd": [], "gsd_cat": [], "image_id": [], "patch_id": [], "patch_points": [], "species": [], "instance_id": [], "instance_path": [], "instance_mask": [], "patch_mask": [], "box": [], "iou_type": [], "overlap": [], "test": [], "hash": []}
         classifiers = {"test": {}, "train/artificial": {}, "train/organic": {}}
         # specify gsd categories
         gsd_cats = ["error", "fine"]
@@ -292,9 +350,7 @@ if len(file_path_variable) > 0:
                         continue
                     # determine image patch locations
                     width, height = original_image.size
-                    target_gsd = random.uniform(gsd_bins[0], gsd_bins[1])
-                    scale = target_gsd/gsd
-                    patchsize = 800 * scale
+                    patchsize = 800
                     n_crops_width = math.ceil(width / patchsize)
                     n_crops_height = math.ceil(height / patchsize)
                     padded_width = n_crops_width * patchsize
@@ -313,6 +369,10 @@ if len(file_path_variable) > 0:
                             top = height_index * patchsize - pad_height
                             bottom = top + patchsize
                             patch_points = (left, top, right, bottom)
+                            unpadded_patch_points = (max(patch_points[0],0), max(patch_points[1],0), min(patch_points[2],width), min(patch_points[3],height))
+                            # calculate colorhash
+                            unpadded_patch = original_image.crop(unpadded_patch_points)
+                            hash = str(imagehash.colorhash(unpadded_patch, binbits=4))
                             # for each instance check if it belongs to this
                             # patch and record data if it does
                             if os.path.exists(annotation_path):
@@ -380,9 +440,7 @@ if len(file_path_variable) > 0:
                                     patches["substrate"].append(substrate)
                                     patches["gsd"].append(gsd)
                                     patches["gsd_cat"].append(gsd_cat)
-                                    patches["target_gsd"].append(target_gsd)
                                     patches["image_id"].append(image_path)
-                                    patches["patchsize"].append(patchsize)
                                     patches["patch_id"].append(patch_id)
                                     patches["patch_points"].append(patch_points)
                                     patches["species"].append(annotation["shapes"][index]["label"])
@@ -394,14 +452,13 @@ if len(file_path_variable) > 0:
                                     patches["iou_type"].append(annotation["shapes"][index]["shape_type"])
                                     patches["overlap"].append(overlap)
                                     patches["test"].append(0)
+                                    patches["hash"].append(hash)
                                     instance_id += 1
                             else:
                                 patches["substrate"].append(substrate)
                                 patches["gsd"].append(gsd)
                                 patches["gsd_cat"].append(gsd_cat)
-                                patches["target_gsd"].append(target_gsd)
                                 patches["image_id"].append(image_path)
-                                patches["patchsize"].append(patchsize)
                                 patches["patch_id"].append(patch_id)
                                 patches["patch_points"].append(patch_points)
                                 patches["species"].append("null")
@@ -413,6 +470,7 @@ if len(file_path_variable) > 0:
                                 patches["iou_type"].append("polygon")
                                 patches["overlap"].append(1)
                                 patches["test"].append(0)
+                                patches["hash"].append(hash)
                             patch_id += 1
 
         # convert dictionary to df
@@ -427,8 +485,8 @@ if len(file_path_variable) > 0:
             .size())
 
         # keep only instances with enough masks
-        min_instances = 15
-        test_instances = 5
+        min_instances = 50
+        test_instances = 20
         train_instances = 1000
 
         species_count = patches.loc[patches['iou_type'] == "polygon"]
@@ -471,7 +529,7 @@ if len(file_path_variable) > 0:
                 print(column, ": ", test[column].sum())
         test = test.reset_index()[["image_id", "patch_id"]]
 
-        # remove test images from instances per patch      
+        # remove test images from instances per patch
         instances_per_patch = pd.merge(instances_per_patch, test, how='outer', indicator=True)
         instances_per_patch = (
             instances_per_patch
@@ -489,70 +547,18 @@ if len(file_path_variable) > 0:
         test = (
             test
             .loc[test._merge == 'both']
+            .drop("_merge", axis=1)
             .reset_index())
 
         train = pd.merge(patches, train, how='outer', on = ["image_id", "patch_id"], indicator=True)
         train = (
             train
             .loc[train._merge == 'both']
+            .drop("_merge", axis=1)
             .reset_index())
 
-        def save_dataset(dataset, test_train):
-            dataset = dataset.groupby('image_id')
-            for image_id, patches in dataset:
-                # load the image
-                image = Image.open(image_id)
-                # read exif data
-                exif_dict = piexif.load(original_image.info['exif'])
-                comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
-                comments["original_image"] = image_id
-                exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
-                exif_bytes = piexif.dump(exif_dict)
-                # group image data by patch
-                patches = patches.groupby('patch_points')
-                # iterate over patches
-                for patch_points, instances in patches:
-                    # crop image
-                    patch = image.crop(patch_points)
-                    # iterate over instances
-                    shapes = []
-                    for index, instance in instances.iterrows():
-                        # crop and save instance if overlap greater than 0.5
-                        if instance["box"] != "null":
-                            if instance["overlap"] == 1.0 and instance["species"] in included_species and instance["iou_type"] == "polygon":
-                                add_to_classifier(instance, test_train, patch, image_id)
-                                # create annotation file
-                                shapes.append({
-                                    "label": instance["species"],
-                                    "points": instance["patch_mask"],
-                                    "group_id": 'null',
-                                    "shape_type": 'polygon',
-                                    "flags": {}})
-                            # blackout instance in image if overlap less than 0.5
-                            # or is a species not included
-                            elif "shadow" not in instance["species"]:
-                                patch = blackout_instance(patch, instance["box"])
-                    # calculate md5 for cropped image
-                    md5hash = hashlib.md5(patch.tobytes()).hexdigest()
-                    patch_id = md5hash + ".JPG"
-                    # save patch
-                    patch.save(os.path.join("detector_dataset", test_train, patch_id), exif = exif_bytes)
-                    # save annotation
-                    annotation_id = md5hash + '.json'
-                    annotation = {
-                        "version": "5.0.1",
-                        "flags": {},
-                        "shapes": shapes,
-                        "imagePath": patch_id,
-                        "imageData": 'null',
-                        "imageHeight": instances["patchsize"].iloc[0],
-                        "imageWidth": instances["patchsize"].iloc[0]}
-                    annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
-                    with open(os.path.join("detector_dataset", test_train, annotation_id), 'w') as annotation_file:
-                        annotation_file.write(annotation_str)
-            return
-        save_dataset(test, "test")
-        save_dataset(train, "train/organic")
+        save_dataset(test, "test", patchsize)
+        save_dataset(train, "train/organic", patchsize)
 
         # create artificial training data
         # seperate dataframe of masks and shadows
@@ -570,124 +576,157 @@ if len(file_path_variable) > 0:
             shadows
             .sort_values('overlap', ascending=False)
             .drop_duplicates(['image_id','instance_id']))
-
-        # loop over backgrounds and paste on instances
-        total_images = len(train.groupby(['image_id', 'patch_id']).size())
-        train = train.groupby('image_id')
+        reps = 15
         patch_number = 0
-        for image_id, patches in train:
-            # load the image
-            image = Image.open(image_id)
-            # read exif data
-            exif_dict = piexif.load(original_image.info['exif'])
-            comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
-            comments["original_image"] = image_id
-            exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
-            exif_bytes = piexif.dump(exif_dict)
-            # group image data by patch
-            patches = patches.groupby('patch_points')
-            # iterate over patches
-            for patch_points, instances in patches:
-                # crop image
-                patch = image.crop(patch_points)
-                # iterate over instances and black out
-                for index, instance in instances.iterrows():
-                    if instance["box"] != "null" and "shadow" not in instance["species"]:
-                        patch = blackout_instance(patch, instance["box"])
-                # transform the background
-                patch, _ = transforms(patch, instances["gsd"].iloc[0], instances["target_gsd"].iloc[0])
-                # randomly sample masks of species
-                species = random.choice(pd.unique(masks['species']))
-                common_name = species.split("_")[0]
-                flock = masks[masks["species"] == species]
-                instances_per_image = int(instances['gsd'].iloc[0] * 1000)
-                flock = flock.sample(instances_per_image, replace = True).reset_index(drop=True)
-                shapes = []
-                pasted = 0
-                # paste new instances onto background
-                for index, bird_data in flock.iterrows():
-                    # open the original image
-                    bird = Image.open(bird_data["instance_path"]).convert("RGBA")
-                    # crop the mask out
-                    points = bird_data["instance_mask"]
-                    # transform the mask
-                    bird, points = transforms(bird, bird_data["gsd"], instances["target_gsd"].iloc[0], points)
-                    # determine locatoins to paste instances
-                    if pasted == 0:
-                        # determine random positions in background
-                        # that don't overlap or exceed image border
-                        bird_size = max(bird.size)
-                        edge_pad = 5
-                        patchsize = max(patch.size)
-                        x = np.linspace(edge_pad, patchsize - bird_size * 1.5, int((patchsize - edge_pad - bird_size * 1.5)/bird_size * 0.9))
-                        y = np.linspace(edge_pad, patchsize - bird_size * 1.5, int((patchsize - edge_pad - bird_size * 1.5)/bird_size * 0.9))
-                        xv, yv = np.meshgrid(x, y)
-                        positions = list(zip(xv.ravel(), yv.ravel()))
-                        try:
-                            positions = random.sample(positions, instances_per_image)
-                        except:
-                            instances_per_image -= 1
-                            continue
-                    # paste the mask
-                    left, top = tuple(map(int, positions[pasted]))
-                    shadow_prob = random.randint(0, 1)
-                    if shadow_prob == 1:
-                        # paste shadow under instance
-                        shadow_row = shadows[shadows["species"].str.contains(common_name)]
-                        try: shadow_row = shadow_row.sample(1, replace = True)
-                        except: shadow_row = shadows.sample(1, replace = True)
+        for rep in range(reps):
+            # group by hash and sample one image_id / patch_id from each
+            # background
+            print(train.groupby(["image_id", "patch_id"]).ngroups)
+            print(train['hash'].nunique())
+            backgrounds = (
+                train
+                .drop_duplicates(['image_id','patch_id'])
+                .groupby("hash")
+                .sample(n=1, replace = True)[['image_id', 'patch_id']])
+            print(len(backgrounds["image_id"]))
+            backgrounds = pd.merge(train, backgrounds, how='outer', on = ["image_id", "patch_id"], indicator=True)
+            backgrounds = (
+                backgrounds
+                .loc[backgrounds._merge == 'both']
+                .reset_index())
+            total_images = len(backgrounds.groupby(['image_id', 'patch_id']).size()) * reps
+            backgrounds = backgrounds.groupby('image_id')
+            for image_id, patches in backgrounds:
+                # load the image
+                image = Image.open(image_id)
+                # read exif data
+                exif_dict = piexif.load(original_image.info['exif'])
+                comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+                comments["original_image"] = image_id
+                # group image data by patch
+                patches = patches.groupby('patch_points')
+                # iterate over patches
+                for patch_points, instances in patches:
+                    # update gsd
+                    comments["gsd"] = instances["gsd"].iloc[0]
+                    exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
+                    exif_bytes = piexif.dump(exif_dict)
+                    # crop image
+                    patch = image.crop(patch_points)
+                    # iterate over instances and black out
+                    for index, instance in instances.iterrows():
+                        if instance["box"] != "null" and "shadow" not in instance["species"]:
+                            patch = blackout_instance(patch, instance["box"])
+                    # change background quality
+                    background_gsd = random.uniform(gsd_bins[0], gsd_bins[1])
+                    scale = background_gsd/instances["gsd"].iloc[0]
+                    size = min(patch.size) / scale
+                    patch = T.Resize(size=int(size))(patch)
+                    # transform the background
+                    patch, _ = transforms(patch, background_gsd, instances["gsd"].iloc[0])
+                    # randomly sample masks of species
+                    species = random.choice(pd.unique(masks['species']))
+                    common_name = species.split("_")[0]
+                    flock = masks[masks["species"] == species]
+                    instances_per_image = int(instances['gsd'].iloc[0] * 1000)
+                    flock = flock.sample(instances_per_image, replace = True).reset_index(drop=True)
+                    shapes = []
+                    pasted = 0
+                    # paste new instances onto background
+                    for index, bird_data in flock.iterrows():
                         # open the original image
-                        shadow = Image.open(shadow_row["instance_path"].item()).convert("RGBA")
-                        shadow_points = shadow_row["instance_mask"].item()
+                        bird = Image.open(bird_data["instance_path"]).convert("RGBA")
+                        # crop the mask out
+                        points = bird_data["instance_mask"]
+                        # change bird quality
+                        bird_gsd = random.uniform(gsd_bins[0], gsd_bins[1])
+                        scale = bird_gsd/bird_data["gsd"]
+                        size = min(bird.size) / scale
+                        bird = T.Resize(size=int(size))(bird)
+                        points = tuple(tuple(item / scale for item in point) for point in points)
                         # transform the mask
-                        shadow, _ = transforms(shadow, shadow_row["gsd"], instances["target_gsd"].iloc[0], shadow_points)
-                        shadow_offset = int(min(bird.size)/2)
-                        shadow_position_x = left + random.randint(-shadow_offset, shadow_offset)
-                        shadow_position_y = top + random.randint(-shadow_offset, shadow_offset)
-                        patch.paste(shadow, (shadow_position_x, shadow_position_y), shadow)
-                    patch.paste(bird, (left, top), bird)
-                    pasted += 1
-                    # move points to pasted coordinates
-                    points = tuple(tuple(sum(x) for x in zip(a, ((left, top)))) for a in points)
-                    box_xmin = min(points, key = lambda t: t[0])[0]
-                    box_xmax = max(points, key = lambda t: t[0])[0]
-                    box_ymin = min(points, key = lambda t: t[1])[1]
-                    box_ymax = max(points, key = lambda t: t[1])[1]
-                    bird_data["box"] = [
-                        [box_xmin, box_ymin],
-                        [box_xmax, box_ymin],
-                        [box_xmax, box_ymax],
-                        [box_xmin, box_ymax]]
-                    # save the classifier data
-                    add_to_classifier(bird_data, "train/artificial", patch, image_id)
-                    # make annotation file
-                    shapes.append({
-                        "label": bird_data["species"],
-                        "points": points,
-                        "group_id": 'null',
-                        "shape_type": 'polygon',
-                        "flags": {}})
-                if instances_per_image > 0:
-                    # save image if all, and at least one, instances have been pasted
-                    print("Saving final image {} of {}".format(patch_number, total_images))
-                    patch_number += 1
-                    md5hash = hashlib.md5(patch.tobytes()).hexdigest()
-                    image_id = md5hash + ".jpg"
-                    annotation_id = md5hash + ".json"
-                    patch = patch.convert("RGB")
-                    patch.save(os.path.join("detector_dataset/train/artificial", image_id), exif = exif_bytes)
-                    height, width = patch.size
-                    annotation = {
-                        "version": "5.0.1",
-                        "flags": {},
-                        "shapes": shapes,
-                        "imagePath": image_id,
-                        "imageData": 'null',
-                        "imageHeight": height,
-                        "imageWidth": width}
-                    annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
-                    with open(os.path.join("detector_dataset/train/artificial", annotation_id), 'w') as annotation_file:
-                        annotation_file.write(annotation_str)
+                        bird, points = transforms(bird, bird_gsd, instances["gsd"].iloc[0], points)
+                        # determine locatoins to paste instances
+                        if pasted == 0:
+                            # determine random positions in background
+                            # that don't overlap or exceed image border
+                            bird_size = max(bird.size)
+                            edge_pad = 5
+                            patchsize = max(patch.size)
+                            x = np.linspace(edge_pad, patchsize - bird_size * 1.5, int((patchsize - edge_pad - bird_size * 1.5)/bird_size * 0.9))
+                            y = np.linspace(edge_pad, patchsize - bird_size * 1.5, int((patchsize - edge_pad - bird_size * 1.5)/bird_size * 0.9))
+                            xv, yv = np.meshgrid(x, y)
+                            positions = list(zip(xv.ravel(), yv.ravel()))
+                            try:
+                                positions = random.sample(positions, instances_per_image)
+                            except:
+                                instances_per_image -= 1
+                                continue
+                        # paste the mask
+                        left, top = tuple(map(int, positions[pasted]))
+                        shadow_prob = random.randint(0, 1)
+                        if shadow_prob == 1:
+                            # paste shadow under instance
+                            shadow_row = shadows[shadows["species"].str.contains(common_name)]
+                            try: shadow_row = shadow_row.sample(1, replace = True)
+                            except: shadow_row = shadows.sample(1, replace = True)
+                            # open the original image
+                            shadow = Image.open(shadow_row["instance_path"].item()).convert("RGBA")
+                            shadow_points = shadow_row["instance_mask"].item()
+                            # change quality of shadow
+                            scale = bird_gsd/shadow_row["gsd"]
+                            size = min(shadow.size) / scale
+                            shadow = T.Resize(size=int(size))(shadow)
+                            shadow_points = tuple(tuple(item / scale for item in point) for point in shadow_points)
+                            # transform the mask
+                            shadow, _ = transforms(shadow, bird_gsd, instances["gsd"].iloc[0], shadow_points)
+                            shadow_offset = int(min(bird.size)/2)
+                            shadow_position_x = left + random.randint(-shadow_offset, shadow_offset)
+                            shadow_position_y = top + random.randint(-shadow_offset, shadow_offset)
+                            patch.paste(shadow, (shadow_position_x, shadow_position_y), shadow)
+                        patch.paste(bird, (left, top), bird)
+                        pasted += 1
+                        # move points to pasted coordinates
+                        points = tuple(tuple(sum(x) for x in zip(a, ((left, top)))) for a in points)
+                        box_xmin = min(points, key = lambda t: t[0])[0]
+                        box_xmax = max(points, key = lambda t: t[0])[0]
+                        box_ymin = min(points, key = lambda t: t[1])[1]
+                        box_ymax = max(points, key = lambda t: t[1])[1]
+                        bird_data["box"] = [
+                            [box_xmin, box_ymin],
+                            [box_xmax, box_ymin],
+                            [box_xmax, box_ymax],
+                            [box_xmin, box_ymax]]
+                        # save the classifier data
+                        add_to_classifier(bird_data, "train/artificial", patch, image_id)
+                        # make annotation file
+                        shapes.append({
+                            "label": bird_data["species"],
+                            "points": points,
+                            "group_id": 'null',
+                            "shape_type": 'polygon',
+                            "flags": {}})
+                    if instances_per_image > 0:
+                        # save image if all, and at least one, instances have been pasted
+                        print("Saving final image {} of {}".format(patch_number, total_images))
+                        patch_number += 1
+                        md5hash = hashlib.md5(patch.tobytes()).hexdigest()
+                        image_id = md5hash + ".jpg"
+                        annotation_id = md5hash + ".json"
+                        patch = patch.convert("RGB")
+                        patch.save(os.path.join("detector_dataset/train/artificial", image_id), exif = exif_bytes)
+                        height, width = patch.size
+                        annotation = {
+                            "version": "5.0.1",
+                            "flags": {},
+                            "shapes": shapes,
+                            "imagePath": image_id,
+                            "imageData": 'null',
+                            "imageHeight": height,
+                            "imageWidth": width}
+                        annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
+                        with open(os.path.join("detector_dataset/train/artificial", annotation_id), 'w') as annotation_file:
+                            annotation_file.write(annotation_str)
         # create classifier annotation files
         for test_train in ["test", "train/artificial", "train/organic"]:
             for classifier in classifiers[test_train].keys():

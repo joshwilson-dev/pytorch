@@ -4,6 +4,8 @@
 /wiener
 /images
 /trial
+/image_trial
+/coda/images
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -102,7 +102,7 @@ def update_detection_model(model_path, device, box_predictor, backbone, kwargs, 
     rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
     kwargs["rpn_anchor_generator"] = rpn_anchor_generator
     model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
-    model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict-artificial-new.pth"), map_location=device))
+    model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict-artificial-hash.pth"), map_location=device))
     model.eval()
     model = model.to(device)
     return model
@@ -142,7 +142,7 @@ def detect_birds(model_path, image_path, model, device, det_index_to_class, over
     kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
     print("Patching...")
     batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height)
-    max_batch_size = 4
+    max_batch_size = 5
     batch_length = batch.size()[0]
     sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
     sub_batch_lengths.append(batch_length % max_batch_size)
@@ -228,14 +228,23 @@ def prepare_image_for_classification(image, device):
 
 def classify(batch, model, index_to_class, output_dict):
     print("Classifying...")
-    scores = model(batch)
+    max_batch_size = 5
+    batch_length = batch.size()[0]
+    sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
+    sub_batch_lengths.append(batch_length % max_batch_size)
+    sub_batches = torch.split(batch, sub_batch_lengths)
+    predictions = []
+    with torch.no_grad():
+        for sub_batch in sub_batches:
+            prediction = model(sub_batch)
+            predictions.extend(prediction)
     named_labels = list(index_to_class.values())
     for instance_index in range(len(batch)):
-        named_labels_with_scores = {}
-        score = torch.nn.functional.softmax(scores[instance_index], dim=0).tolist()
+        named_labels_with_pred = {}
+        prediction = torch.nn.functional.softmax(predictions[instance_index], dim=0).tolist()
         for class_index in range(len(named_labels)):
-            named_labels_with_scores[named_labels[class_index]] = score[class_index]
-        output_dict["species"].append(named_labels_with_scores)
+            named_labels_with_pred[named_labels[class_index]] = prediction[class_index]
+        output_dict["species"].append(named_labels_with_pred)
     return output_dict
 
 def create_annotation(output_dict, image_name, width, height):

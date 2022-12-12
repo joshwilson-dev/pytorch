@@ -23,7 +23,7 @@ import json
 import piexif
 import pandas as pd
 import random
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw, ImageEnhance, ImagePath
 import numpy as np
 import hashlib
 import torchvision.transforms as T
@@ -166,7 +166,7 @@ def solve(df, threshold, data_type):
             model.Add(df["null"].dot(row_selection) <= 0)
    
     # Step 3: Define the objective function
-    # Minimize the total cost (based upon rows selected)
+    # Maximise the the number of images
     model.Maximize(pd.Series([1]*len(df)).dot(row_selection))
 
     # Step 4: Creates the solver and solve.
@@ -236,14 +236,12 @@ def save_dataset(dataset, test_train, patchsize):
         exif_dict = piexif.load(original_image.info['exif'])
         comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
         comments["original_image"] = image_id
+        exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
+        exif_bytes = piexif.dump(exif_dict)
         # group image data by patch
         patches = patches.groupby('patch_points')
         # iterate over patches
         for patch_points, instances in patches:
-            # correct gsd
-            comments["gsd"] = instances["gsd"].iloc[0]
-            exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
-            exif_bytes = piexif.dump(exif_dict)
             # crop image
             patch = image.crop(patch_points)
             # iterate over instances
@@ -284,6 +282,17 @@ def save_dataset(dataset, test_train, patchsize):
                 annotation_file.write(annotation_str)
     return
 
+def PolyArea(points, patch):
+    points = [tuple(point) for point in points]
+    image = ImagePath.Path(points).getbbox()  
+    size = list(map(int, map(math.ceil, image[2:])))
+    img = Image.new("P", size, 0) 
+    img1 = ImageDraw.Draw(img)  
+    img1.polygon(points, fill = 1)
+    img = img.crop(patch)
+    pixels = sum(img.point(lambda pix: 1 if pix==1 else 0).getdata())
+    return pixels
+
 file_path_variable = search_for_file_path()
 # did the user select a dir or cancel?
 if len(file_path_variable) > 0:
@@ -293,6 +302,8 @@ if len(file_path_variable) > 0:
         "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
+        # list of substrate 
+        substrates = ["grass", "macrophyte", "reeds", "water", "path", "dirt", "tree"]
         # create dictionaries to store data
         patches = {"substrate": [], "gsd": [], "gsd_cat": [], "image_id": [], "patch_id": [], "patch_points": [], "species": [], "instance_id": [], "instance_path": [], "instance_mask": [], "patch_mask": [], "box": [], "iou_type": [], "overlap": [], "test": []}
         classifiers = {"test": {}, "train/artificial": {}, "train/organic": {}}
@@ -373,97 +384,108 @@ if len(file_path_variable) > 0:
                             if os.path.exists(annotation_path):
                                 annotation = json.load(open(annotation_path))
                                 instance_id = 0
+                                substrate_areas = dict.fromkeys(substrates, 0)
                                 for index in range(len(annotation["shapes"])):
-                                    # if this is the first time through the annotation,
-                                    # save each of the instances
-                                    if annotation["shapes"][index]["shape_type"] == "polygon":
-                                        if patch_id == 0:
-                                            # crop out instance
-                                            instance_crop, instance_mask = crop_mask(original_image, annotation["shapes"][index]["points"])
-                                            # determine md5
-                                            md5hash = hashlib.md5(instance_crop.tobytes()).hexdigest()
-                                            instance_path = os.path.join("instances", md5hash + ".PNG")
-                                            # save
-                                            instance_crop.save(instance_path)
+                                    if annotation["shapes"][index]["label"] in substrates:
+                                        # calculate area of substrate
+                                        area = PolyArea(annotation["shapes"][index]["points"], patch_points)
+                                        # append to dictionary
+                                        substrate_areas[annotation["shapes"][index]["label"]] += area
+                                substrate = max(zip(substrate_areas.values(), substrate_areas.keys()))[1]
+
+                                for index in range(len(annotation["shapes"])):
+                                    if annotation["shapes"][index]["label"] not in substrates:
+                                        # grab the points
+                                        points_x, points_y = map(list, zip(*annotation["shapes"][index]["points"]))
+                                        # if this is the first time through the annotation,
+                                        # save each of the instances
+                                        if annotation["shapes"][index]["shape_type"] == "polygon":
+                                            if patch_id == 0:
+                                                # crop out instance
+                                                instance_crop, instance_mask = crop_mask(original_image, annotation["shapes"][index]["points"])
+                                                # determine md5
+                                                md5hash = hashlib.md5(instance_crop.tobytes()).hexdigest()
+                                                instance_path = os.path.join("instances", md5hash + ".PNG")
+                                                # save
+                                                instance_crop.save(instance_path)
+                                            else:
+                                                instance_path = instance_paths[index] # load it from first iteration
+                                                patch_mask = patch_masks[index]
+                                                instance_mask = instance_masks[index]
                                         else:
-                                            instance_path = instance_paths[index] # load it from first iteration
-                                            patch_mask = patch_masks[index]
-                                            instance_mask = instance_masks[index]
-                                    else:
-                                        instance_path = "null"
-                                        instance_mask = "null"
-                                    points_x, points_y = map(list, zip(*annotation["shapes"][index]["points"]))
-                                    # adjust box and points to patch coordinates
-                                    points_x = [x - left for x in points_x]
-                                    points_y = [y - top for y in points_y]
-                                    patch_mask = tuple(zip(points_x, points_y))
-                                    box_xmin = min(points_x)
-                                    box_xmax = max(points_x)
-                                    box_ymin = min(points_y)
-                                    box_ymax = max(points_y)
-                                    box_width = box_xmax - box_xmin
-                                    box_height = box_ymax - box_ymin
-                                    box_area = box_width * box_height
-                                    if box_xmin < 0: box_xmin = 0
-                                    if box_xmax > patchsize: box_xmax = patchsize
-                                    if box_ymin < 0: box_ymin = 0
-                                    if box_ymax > patchsize: box_ymax = patchsize
-                                    # save box
-                                    box = [
-                                        [box_xmin, box_ymin],
-                                        [box_xmax, box_ymin],
-                                        [box_xmax, box_ymax],
-                                        [box_xmin, box_ymax]]
-                                    # copy box to mask if necessary
-                                    if len(points_x) == 2:
-                                        patch_mask = box
-                                    # save instance_path and mask to list
-                                    instance_paths.append(instance_path)
-                                    instance_masks.append(instance_mask)
-                                    patch_masks.append(patch_mask)
-                                    # check if box is outside patch
-                                    if box_xmin > patchsize or box_xmax < 0 or \
-                                        box_ymin > patchsize or box_ymax < 0:
+                                            instance_path = "null"
+                                            instance_mask = "null"
+                                        # adjust box and points to patch coordinates
+                                        points_x = [x - left for x in points_x]
+                                        points_y = [y - top for y in points_y]
+                                        patch_mask = tuple(zip(points_x, points_y))
+                                        box_xmin = min(points_x)
+                                        box_xmax = max(points_x)
+                                        box_ymin = min(points_y)
+                                        box_ymax = max(points_y)
+                                        box_width = box_xmax - box_xmin
+                                        box_height = box_ymax - box_ymin
+                                        box_area = box_width * box_height
+                                        if box_xmin < 0: box_xmin = 0
+                                        if box_xmax > patchsize: box_xmax = patchsize
+                                        if box_ymin < 0: box_ymin = 0
+                                        if box_ymax > patchsize: box_ymax = patchsize
+                                        # save box
+                                        box = [
+                                            [box_xmin, box_ymin],
+                                            [box_xmax, box_ymin],
+                                            [box_xmax, box_ymax],
+                                            [box_xmin, box_ymax]]
+                                        # copy box to mask if necessary
+                                        if len(points_x) == 2:
+                                            patch_mask = box
+                                        # save instance_path and mask to list
+                                        instance_paths.append(instance_path)
+                                        instance_masks.append(instance_mask)
+                                        patch_masks.append(patch_mask)
+                                        # check if box is outside patch
+                                        if box_xmin > patchsize or box_xmax < 0 or \
+                                            box_ymin > patchsize or box_ymax < 0:
+                                            instance_id += 1
+                                            continue
+                                        # calculate new area
+                                        new_box_width = box_xmax - box_xmin
+                                        new_box_height = box_ymax - box_ymin
+                                        new_box_area = new_box_width * new_box_height
+                                        overlap = new_box_area/box_area
+                                        # save patch data
+                                        patches["substrate"].append(substrate)
+                                        patches["gsd"].append(gsd)
+                                        patches["gsd_cat"].append(gsd_cat)
+                                        patches["image_id"].append(image_path)
+                                        patches["patch_id"].append(patch_id)
+                                        patches["patch_points"].append(patch_points)
+                                        patches["species"].append(annotation["shapes"][index]["label"])
+                                        patches["instance_id"].append(instance_id)
+                                        patches["instance_path"].append(instance_path)
+                                        patches["instance_mask"].append(instance_mask)
+                                        patches["patch_mask"].append(patch_mask)
+                                        patches["box"].append(box)
+                                        patches["iou_type"].append(annotation["shapes"][index]["shape_type"])
+                                        patches["overlap"].append(overlap)
+                                        patches["test"].append(0)
                                         instance_id += 1
-                                        continue
-                                    # calculate new area
-                                    new_box_width = box_xmax - box_xmin
-                                    new_box_height = box_ymax - box_ymin
-                                    new_box_area = new_box_width * new_box_height
-                                    overlap = new_box_area/box_area
-                                    # save patch data
+                                else:
                                     patches["substrate"].append(substrate)
                                     patches["gsd"].append(gsd)
                                     patches["gsd_cat"].append(gsd_cat)
                                     patches["image_id"].append(image_path)
                                     patches["patch_id"].append(patch_id)
                                     patches["patch_points"].append(patch_points)
-                                    patches["species"].append(annotation["shapes"][index]["label"])
-                                    patches["instance_id"].append(instance_id)
-                                    patches["instance_path"].append(instance_path)
-                                    patches["instance_mask"].append(instance_mask)
-                                    patches["patch_mask"].append(patch_mask)
-                                    patches["box"].append(box)
-                                    patches["iou_type"].append(annotation["shapes"][index]["shape_type"])
-                                    patches["overlap"].append(overlap)
+                                    patches["species"].append("null")
+                                    patches["instance_id"].append("null")
+                                    patches["instance_path"].append("null")
+                                    patches["instance_mask"].append("null")
+                                    patches["patch_mask"].append("null")
+                                    patches["box"].append("null")
+                                    patches["iou_type"].append("polygon")
+                                    patches["overlap"].append(1)
                                     patches["test"].append(0)
-                                    instance_id += 1
-                            else:
-                                patches["substrate"].append(substrate)
-                                patches["gsd"].append(gsd)
-                                patches["gsd_cat"].append(gsd_cat)
-                                patches["image_id"].append(image_path)
-                                patches["patch_id"].append(patch_id)
-                                patches["patch_points"].append(patch_points)
-                                patches["species"].append("null")
-                                patches["instance_id"].append("null")
-                                patches["instance_path"].append("null")
-                                patches["instance_mask"].append("null")
-                                patches["patch_mask"].append("null")
-                                patches["box"].append("null")
-                                patches["iou_type"].append("polygon")
-                                patches["overlap"].append(1)
-                                patches["test"].append(0)
                             patch_id += 1
 
         # convert dictionary to df
@@ -478,8 +500,8 @@ if len(file_path_variable) > 0:
             .size())
 
         # keep only instances with enough masks
-        min_instances = 10
-        test_instances = 5
+        min_instances = 1
+        test_instances = 1
         train_instances = 1000
 
         species_count = patches.loc[patches['iou_type'] == "polygon"]
@@ -539,13 +561,15 @@ if len(file_path_variable) > 0:
         test = pd.merge(patches, test, how='outer', indicator=True)
         test = (
             test
+            .drop('_merge', axis = 1)
             .loc[test._merge == 'both']
             .reset_index())
 
-        train = pd.merge(patches, train, how='outer', on = ["image_id", "patch_id"], indicator=True)
+        train = pd.merge(patches, train, how='outer', indicator=True)
         train = (
             train
             .loc[train._merge == 'both']
+            .drop('_merge', axis = 1)
             .reset_index())
 
         save_dataset(test, "test", patchsize)
@@ -568,13 +592,30 @@ if len(file_path_variable) > 0:
             .sort_values('overlap', ascending=False)
             .drop_duplicates(['image_id','instance_id']))
 
+        # backgrounds is an equal sample of each background
+        backgrounds = pd.DataFrame(columns = substrates)
+        substrate_count = train.drop_duplicates(['image_id','patch_id'])['substrate'].value_counts()
+        substrate_count = [1]
+        print(substrate_count)
+        for substrate in substrates:
+            sub_back = train[train["substrate"] == substrate]
+            if len(sub_back['image_id']) > 0:
+                sub_back = sub_back.drop_duplicates(['image_id','patch_id'])
+                sub_back = sub_back.sample(n=substrate_count[-1], replace = True, random_state=1)[['image_id', 'patch_id']]
+                sub_backed = pd.merge(train, sub_back, how='outer', on = ["image_id", "patch_id"], indicator=True)
+                sub_backeded = (
+                    sub_backed
+                    .loc[sub_backed._merge == 'both']
+                    .reset_index())
+                backgrounds = pd.concat([sub_backeded, backgrounds])
+
         # loop over backgrounds and paste on instances
         reps = 2
-        total_images = len(train.groupby(['image_id', 'patch_id']).size()) * reps
-        train = train.groupby('image_id')
+        total_images = len(backgrounds.groupby(['image_id', 'patch_id']).size()) * reps
+        backgrounds = backgrounds.groupby('image_id')
         patch_number = 0
         for rep in range(0, reps):
-            for image_id, patches in train:
+            for image_id, patches in backgrounds:
                 # load the image
                 image = Image.open(image_id)
                 # read exif data
@@ -631,8 +672,8 @@ if len(file_path_variable) > 0:
                             bird_size = max(bird.size)
                             edge_pad = 5
                             patchsize = max(patch.size)
-                            x = np.linspace(edge_pad, patchsize - bird_size * 1.5, int((patchsize - edge_pad - bird_size * 1.5)/bird_size * 0.9))
-                            y = np.linspace(edge_pad, patchsize - bird_size * 1.5, int((patchsize - edge_pad - bird_size * 1.5)/bird_size * 0.9))
+                            x = np.linspace(edge_pad, patchsize - bird_size * 1.25, int((patchsize - edge_pad - bird_size * 1.25)/bird_size * 0.9))
+                            y = np.linspace(edge_pad, patchsize - bird_size * 1.25, int((patchsize - edge_pad - bird_size * 1.25)/bird_size * 0.9))
                             xv, yv = np.meshgrid(x, y)
                             positions = list(zip(xv.ravel(), yv.ravel()))
                             try:
