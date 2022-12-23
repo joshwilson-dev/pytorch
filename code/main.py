@@ -219,7 +219,6 @@ def create_annotation(boxes, scores, image_name, width, height, index_to_class):
     species_labels = []
     species_scores = []
     bird_scores = []
-    # print(output_dict["boxes"][0])
     for index in range(len(boxes)):
         box = boxes[index]
         points.append([
@@ -324,7 +323,7 @@ def main():
 
     # create detection model
     device = torch.device("cuda")
-    model_path = os.path.join("../models/bird-detector-final")
+    model_path = os.path.join("../models/bird-detector")
     kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
     index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
     birds_by_region = json.load(open(os.path.join(model_path, "birds_by_region.json")))
