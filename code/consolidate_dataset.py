@@ -19,10 +19,14 @@ import shutil
 import tkinter
 from tkinter import filedialog
 from tkinter import messagebox
+import json
 
 #################
 #### Content ####
 #################
+# image_file_path = os.path.abspath("C:/Users/uqjwil54/Documents/trial/2022-10-11 1020/backgrounds/fc61990811f490df4b32a7780fff688d.JPG")
+# background_dataset = "C:/Users/uqjwil54/Documents/trial/dataset/backgrounds/fc61990811f490df4b32a7780fff688d.JPG"
+# shutil.copyfile(image_file_path, background_dataset)
 
 # create function for user to select dir
 root = tkinter.Tk()
@@ -48,18 +52,28 @@ if len(file_path_variable) > 0:
         "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
+        mask_dataset = "dataset/masks"
+        background_dataset = "dataset/backgrounds"
+        for path in mask_dataset, background_dataset:
+            if os.path.exists(path):
+                shutil.rmtree(path)
+            os.makedirs(path)
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
-            dataset = os.path.join(os.getcwd(), "dataset")
-            if not os.path.exists(dataset):
-                os.makedirs(dataset, exist_ok = True)
             for file in files:
-                if file.endswith(".json"):
-                    annotation_file_name = file
-                    image_file_name = os.path.splitext(file)[0] + ".JPG"
-                    annotation_file_path = os.path.join(root, file)
-                    image_file_path = os.path.splitext(os.path.abspath(annotation_file_path))[0] + ".JPG"
-                    if "tool" not in image_file_path:
-                        print(image_file_path)
-                        shutil.copyfile(image_file_path, os.path.join(dataset, image_file_name))
-                        shutil.copyfile(annotation_file_path, os.path.join(dataset, annotation_file_name))
+                if "dataset" not in root:
+                    if "fully annotated" in root:
+                        if file.endswith(".json"):
+                            annotation_file_name = file
+                            annotation_file_path = os.path.join(root, annotation_file_name)
+                            annotation = json.load(open(annotation_file_path))
+                            image_file_name = annotation["imagePath"]
+                            image_file_path = os.path.join(root, image_file_name)
+                            print(image_file_path)
+                            shutil.copyfile(image_file_path, os.path.join(mask_dataset, image_file_name))
+                            shutil.copyfile(annotation_file_path, os.path.join(mask_dataset, annotation_file_name))
+                    if "backgrounds" in root:
+                        if file.endswith(".JPG"):
+                            image_file_path = os.path.join(root, file)
+                            print(image_file_path)
+                            shutil.copyfile(image_file_path, os.path.join(background_dataset, file))

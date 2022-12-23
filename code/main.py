@@ -3,31 +3,41 @@ import torchvision
 import PIL
 import os
 import json
-from torchvision.io import read_image
 import math
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 import piexif
-from requests import get
-from pandas import json_normalize
-import torch.nn as nn
-from torchvision import models, transforms
 import shapefile
 from shapely.geometry import Point
 from shapely.geometry import shape
+from torchvision.models.detection.anchor_utils import AnchorGenerator
+import csv
+import math
+import pandas as pd
+from torchvision.models.detection import roi_heads
+import custom_roi_heads
+import custom_boxes
+from torchvision.ops import boxes as box_ops
 
-patch_size = 1333
-overlap = 150
+# redefining roi_heads to return scores for all classes
+# and filter the classes based on a supplied filter
+roi_heads.RoIHeads.postprocess_detections = custom_roi_heads.postprocess_detections
+roi_heads.RoIHeads.forward = custom_roi_heads.forward
 
-def get_xmp(image_path):
+# redefining boxes to do nms on all classes, not class specific
+box_ops.batched_nms = custom_boxes.batched_nms
+box_ops._batched_nms_coordinate_trick = custom_boxes._batched_nms_coordinate_trick
+
+def get_xmp(image_file_path):
     # get xmp information
-    f = open(image_path, 'rb')
+    f = open(image_file_path, 'rb')
     d = f.read()
     xmp_start = d.find(b'<x:xmpmeta')
     xmp_end = d.find(b'</x:xmpmeta')
     xmp_str = (d[xmp_start:xmp_end+12]).lower()
-    # Extract dji info
+    # define info to search for
     dji_xmp_keys = ['relativealtitude']
     dji_xmp = {}
+    # extract info from xmp
     for key in dji_xmp_keys:
         search_str = (key + '="').encode("UTF-8")
         value_start = xmp_str.find(search_str) + len(search_str)
@@ -37,13 +47,14 @@ def get_xmp(image_path):
     height = dji_xmp["relativealtitude"]
     return height
 
-def get_altitude(exif_dict):
-    altitude_tag = exif_dict['GPS'][piexif.GPSIFD.GPSAltitude]
-    altitude_ref = exif_dict['GPS'][piexif.GPSIFD.GPSAltitudeRef]
-    altitude = altitude_tag[0]/altitude_tag[1]
-    below_sea_level = altitude_ref != 0
-    altitude = -altitude if below_sea_level else altitude
-    return altitude
+def get_gsd(exif, sensor_sizes, image_width, image_height, height):
+    camera_model = exif["0th"][piexif.ImageIFD.Model].decode("utf-8").rstrip('\x00')
+    sensor_width, sensor_length = sensor_sizes[camera_model]
+    focal_length = exif["Exif"][piexif.ExifIFD.FocalLength][0] / exif["Exif"][piexif.ExifIFD.FocalLength][1]
+    pixel_pitch = max(sensor_width / image_width, sensor_length / image_height)
+    # calculate gsd
+    gsd = height * pixel_pitch / focal_length
+    return gsd
 
 def get_gps(exif_dict):
     latitude_tag = exif_dict['GPS'][piexif.GPSIFD.GPSLatitude]
@@ -62,95 +73,21 @@ def degrees(tag):
     s = tag[2][0] / tag[2][1]
     return d + (m / 60.0) + (s / 3600.0)
 
-def get_elevation(latitude, longitude):
-    query = ('https://api.open-elevation.com/api/v1/lookup'f'?locations={latitude},{longitude}')
-    # Request with a timeout for slow responses
-    r = get(query, timeout = 20)
-    # Only get the json response in case of 200 or 201
-    if r.status_code == 200 or r.status_code == 201:
-        elevation = json_normalize(r.json(), 'results')['elevation'].values[0]
-    else: 
-        elevation = None
-    return elevation
-
 def is_float(string):
     try:
         string = float(string)
         return string
     except: return string
 
-sensor_size = {
-    "FC220": [6.16, 4.55],
-    "FC330": [6.16, 4.62],
-    "FC7203": [6.3, 4.7],
-    "FC6520": [17.3, 13],
-    "FC6310": [13.2, 8.8],
-    "L1D-20c": [13.2, 8.8],
-    "Canon PowerShot G15": [7.44, 5.58],
-    "NX500": [23.50, 15.70],
-    "Canon PowerShot S100": [7.44, 5.58],
-    "Survey2_RGB": [6.17472, 4.63104]
-    }
-
-def get_gsd(exif_dict, image_path, image_width, image_height):
-    try:
-        height = get_xmp(image_path)
-        print("Got height from xmp")
-    except:
-        print("Couldn't get height from xmp")
-        print("Trying to infer height from altitude and elevation a GPS")
-        try:
-            latitude, longitude = get_gps(exif_dict)
-            print("Got GPS from exif")
-        except:
-            print("Couldn't get GPS")
-            return
-        try:
-            altitude = get_altitude(exif_dict)
-            print("Got altiude from exif")
-        except:
-            print("Couldn't get altitude")
-            return
-        try:
-            elevation = get_elevation(latitude, longitude)
-            print("Got elevation from exif")
-            height = altitude - elevation
-        except:
-            print("Couldn't get elevation")
-            return
-    try:
-        camera_model = exif_dict["0th"][piexif.ImageIFD.Model].decode("utf-8").rstrip('\x00')
-        print("Got camera model from exif")
-    except:
-        print("Couldn't get camera model from exif")
-        return
-    try:
-        sensor_width, sensor_length = sensor_size[camera_model]
-        print("Got sensor dimensions")
-    except:
-        print("Couldn't get sensor dimensions from sensor size dict")
-        return
-    try:
-        focal_length = exif_dict["Exif"][piexif.ExifIFD.FocalLength][0] / exif_dict["Exif"][piexif.ExifIFD.FocalLength][1]
-        print("Got focal length from exif")
-    except:
-        print("Couldn't get focal length from exif")
-        return
-    pixel_pitch = max(sensor_width / image_width, sensor_length / image_height)
-    gsd = height * pixel_pitch / focal_length
-    print("GSD: ", gsd)
-    return gsd
-
 def get_region(exif_dict):
     try:
         latitude, longitude = get_gps(exif_dict)
         gps = (longitude, latitude)
-        print("Got GPS from exif")
     except:
         print("Couldn't get GPS")
         return
     try:
-        shape_path = "World_Continents/World_Continents.shp"
+        shape_path = "world_continents\World_Continents.shp"
         shp = shapefile.Reader(shape_path)
         all_shapes = shp.shapes()
         all_records = shp.records()
@@ -158,157 +95,147 @@ def get_region(exif_dict):
             boundary = all_shapes[i]
             if Point(gps).within(shape(boundary)):
                 region = all_records[i][1]
-                print("The image was taken in ", region)
-    except:
+                if region == "Australia": region = "Oceania"
+                if region == "Africa": region = "Oceania"
+    except Exception as e:
+        print(e)
         print("Couldn't get continent")
     return region
 
-def classify(instance, model_path, device):
-    model = create_classification_model(model_path, device)
-    scores = model(instance)[0]
-    scores = torch.nn.functional.softmax(scores, dim=0).tolist()
-    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.txt")))
-    named_labels = list(index_to_class.values())
-    named_labels_with_scores = {}
-    for i in range(len(named_labels)):
-        named_labels_with_scores[named_labels[i]] = scores[i]
-    return named_labels_with_scores
-
-def prepare_image_for_classification(image, device):
-    image = image.convert('RGB')
-    # pad crop to square
-    width, height = image.size
-    max_dim = max(width, height)
-    if height > width:
-        pad = [int((height - width) / 2) + 20, 20]
-    else:
-        pad = [20, int((width - height)/2) + 20]
-    image = torchvision.transforms.Pad(padding=pad)(image)
-    image = torchvision.transforms.CenterCrop(size=max_dim)(image)
-    # resize crop to 224
-    image = torchvision.transforms.Resize(224)(image)
-    image = torchvision.transforms.ToTensor()(image)
-    image = torchvision.transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(image)
-    image = image.unsqueeze(0)
-    image = image.to(device)
-    return image
-
-def create_classification_model(model_path, device):
-    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.txt")))
-    num_classes = len(index_to_class)
-    model = models.resnet101(weights='ResNet101_Weights.DEFAULT')
-    features = model.fc.in_features
-    model.fc = nn.Linear(features, num_classes)
-    model = model.to(device)
-    model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict.pth")))
-    model.eval()
-    return model
-
-def create_detection_model(model_path, device):
-    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.txt")))
+def create_detection_model(index_to_class, model_path, device, kwargs, regional_filter):
     num_classes = len(index_to_class) + 1
-    kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
     backbone = resnet_fpn_backbone(backbone_name = "resnet101", weights = "DEFAULT")
     box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
+    anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
+    aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
+    rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
+    kwargs["rpn_anchor_generator"] = rpn_anchor_generator
     model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
+    model.roi_heads.filter = regional_filter.to(device)
     model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict.pth"), map_location=device))
     model.eval()
     model = model.to(device)
     return model
 
-def prepare_image_for_detection(image_path, device):
+def prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height, gsd):
     original_image = PIL.Image.open(image_path).convert('RGB')
+    scale = 0.0025/gsd
     width, height = original_image.size
-    n_crops_width = math.ceil((width - overlap) / (patch_size - overlap))
-    n_crops_height = math.ceil((height - overlap) / (patch_size - overlap))
-    padded_width = n_crops_width * (patch_size - overlap) + overlap
-    padded_height = n_crops_height * (patch_size - overlap) + overlap
+    width = int(width / scale)
+    height = int(height / scale)
+    original_image = original_image.resize((width, height)) 
+    n_crops_width = math.ceil((width - overlap) / (patch_width - overlap))
+    n_crops_height = math.ceil((height - overlap) / (patch_height - overlap))
+    padded_width = n_crops_width * (patch_width - overlap) + overlap
+    padded_height = n_crops_height * (patch_height - overlap) + overlap
     pad_width = (padded_width - width) / 2
     pad_height = (padded_height - height) / 2
     left = (padded_width/2) - (width/2)
     top = (padded_height/2) - (height/2)
     image = PIL.Image.new(original_image.mode, (padded_width, padded_height), "black")
     image.paste(original_image, (int(left), int(top)))
-    patches = [] 
+    patches = []
     for height_index in range(n_crops_height):
         for width_index in range(n_crops_width):
-            left = width_index * (patch_size - overlap)
-            right = left + patch_size
-            top = height_index * (patch_size - overlap)
-            bottom = top + patch_size
+            left = width_index * (patch_width - overlap)
+            right = left + patch_width
+            top = height_index * (patch_height - overlap)
+            bottom = top + patch_height
             patch = image.crop((left, top, right, bottom))
             patches.append(patch)
-    batch = torch.empty(0, 3, patch_size, patch_size).to(device)
+    batch = torch.empty(0, 3, patch_height, patch_width).to(device)
     for patch in patches:
         patch = torchvision.transforms.PILToTensor()(patch)
         patch = torchvision.transforms.ConvertImageDtype(torch.float)(patch)
         patch = patch.unsqueeze(0)
         patch = patch.to(device)
         batch = torch.cat((batch, patch), 0)
-    return batch, pad_width, pad_height, n_crops_height, n_crops_width
+    return batch, pad_width, pad_height, n_crops_height, n_crops_width, scale
 
-def detect_birds(model_path, image_path, model, device):
-    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.txt")))
-    batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image_for_detection(image_path, device)
+def detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd):
+    print("Patching...")
+    batch, pad_width, pad_height, n_crops_height, n_crops_width, scale = prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height, gsd)
+    max_batch_size = 10
+    batch_length = batch.size()[0]
+    sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
+    sub_batch_lengths.append(batch_length % max_batch_size)
+    sub_batches = torch.split(batch, sub_batch_lengths)
+    predictions = []
+    print("Detecting...")
     with torch.no_grad():
-        prediction = model(batch)
-    boxes = torch.empty(0, 4).to(device)
-    scores = torch.empty(0).to(device)
-    labels = torch.empty(0, dtype=torch.int64).to(device)
+        for sub_batch in sub_batches:
+            prediction = model(sub_batch)
+            predictions.extend(prediction)
+    boxes = torch.empty(0, 4)
+    scores = torch.empty(0)
+    class_scores = torch.empty(0, len(index_to_class))
+    labels = torch.empty(0, dtype=torch.int64)
     for height_index in range(n_crops_height):
         for width_index in range(n_crops_width):
             patch_index = height_index * n_crops_width + width_index
-            padding_left = (patch_size - overlap) * width_index - pad_width
-            padding_top = (patch_size - overlap) * height_index - pad_height
-            adjustment = torch.tensor([[padding_left, padding_top, padding_left, padding_top]]).to(device)
-            adj_boxes = torch.add(adjustment, prediction[patch_index]["boxes"])
+            batch_boxes = predictions[patch_index]["boxes"]
+            batch_scores = predictions[patch_index]["scores"]
+            batch_class_scores = predictions[patch_index]["class_scores"]
+            batch_labels = predictions[patch_index]["labels"]
+            # if box near overlapping edge, drop the entire box
+            sides = []
+            if width_index != 0:
+                sides.append(0)
+            if height_index != 0:
+                sides.append(1)
+            if width_index != max(range(n_crops_width)):
+                sides.append(2)
+            if height_index != max(range(n_crops_height)):
+                sides.append(3)
+            for side in sides:
+                # top and left
+                if side < 2: index = batch_boxes[:, side] > reject
+                # bottom and right
+                else: index = batch_boxes[:, side] < patch_width - reject
+                batch_boxes = batch_boxes[index]
+                batch_scores = batch_scores[index]
+                batch_class_scores = batch_class_scores[index]
+                batch_labels = batch_labels[index]
+            padding_left = (patch_width - overlap) * width_index - pad_width
+            padding_top = (patch_height - overlap) * height_index - pad_height
+            #scale
+            adjustment = torch.tensor([[padding_left, padding_top, padding_left, padding_top]])
+            adj_boxes = torch.add(adjustment, batch_boxes.to(torch.device("cpu")))
+            adj_boxes = torch.mul(adj_boxes, scale)
             boxes = torch.cat((boxes, adj_boxes), 0)
-            scores = torch.cat((scores, prediction[patch_index]["scores"]), 0)
-            labels = torch.cat((labels, prediction[patch_index]["labels"]), 0)
-    nms_indices = torchvision.ops.nms(boxes, scores, 0.1)
+            scores = torch.cat((scores, batch_scores.to(torch.device("cpu"))), 0)
+            class_scores = torch.cat((class_scores, batch_class_scores.to(torch.device("cpu"))), 0)
+            labels = torch.cat((labels, batch_labels.to(torch.device("cpu"))), 0)
+    nms_indices = box_ops.batched_nms(boxes, scores, labels, kwargs["box_nms_thresh"])
     boxes = boxes[nms_indices]
     scores = scores[nms_indices].tolist()
+    class_scores = class_scores[nms_indices].tolist()
     labels = labels[nms_indices].tolist()
-    named_labels = [index_to_class[str(i)] for i in labels]
-    return boxes, scores, named_labels
+    return boxes, class_scores
 
-def create_image(image_path, output_dict):
-    image = read_image(image_path)
-    boxes = output_dict["boxes"][0]
-    labels = ["object"] * len(boxes)
-    for i in range(len(boxes)):
-        for rank in output_dict.keys():
-            if rank != "boxes":
-                rank_scores = output_dict[rank][i]
-                if max(rank_scores.values()) > 0.5:
-                    labels[i] = max(rank_scores, key=rank_scores.get)
-    ouput_image = torchvision.utils.draw_bounding_boxes(image = image, boxes = boxes, labels = labels)
-    ouput_image = torchvision.transforms.ToPILImage()(ouput_image)
-    ouput_image.show()
-    ouput_image.save("trial.jpg")
-
-def create_annotation(output_dict, file, height, width):
-    class_to_label = json.load(open("class_to_label.json"))
+def create_annotation(boxes, scores, image_name, width, height, index_to_class):
+    print("Creating annotation...")
     points = []
-    labels = []
-    for index in range(len(output_dict["boxes"][0])):
-        box = output_dict["boxes"][0][index]
+    species_labels = []
+    species_scores = []
+    bird_scores = []
+    for index in range(len(boxes)):
+        box = boxes[index]
         points.append([
             [float(box[0]), float(box[1])],
             [float(box[2]), float(box[3])]])
-        if output_dict["age"][index]["adult"] > 0.5:
-            rank_scores = output_dict["species"][index]
-            if max(output_dict["species"][index].values()) > 0.5:
-                label = class_to_label[max(output_dict["species"][index], key=rank_scores.get)]
-            else: label = class_to_label["adult"]
-        else: label = class_to_label["chick"]
-        labels.append(label)
-    label_name = os.path.splitext(file)[0] + '.json'
+        bird_score = round(sum(scores[index]), 2)
+        species_score = round(max(scores[index]), 2)
+        species_label = index_to_class[str(scores[index].index(max(scores[index])) + 1)]
+        species_labels.append(species_label)
+        bird_scores.append(bird_score)
+        species_scores.append(species_score)
+    label_name = os.path.splitext(image_name)[0] + '.json'
     label_path = os.path.join("../images", label_name)
     shapes = []
-    for i in range(0, len(labels)):
+    for i in range(0, len(species_labels)):
         shapes.append({
-            "label": labels[i],
+            "label": ' '.join(("Bird:",str(bird_scores[i]), "-", species_labels[i] + ":", str(species_scores[i]))),
             "points": points[i],
             "group_id": 'null',
             "shape_type": "rectangle",
@@ -317,7 +244,7 @@ def create_annotation(output_dict, file, height, width):
         "version": "5.0.1",
         "flags": {},
         "shapes": shapes,
-        "imagePath": file,
+        "imagePath": image_name,
         "imageData": 'null',
         "imageHeight": height,
         "imageWidth": width}
@@ -326,82 +253,104 @@ def create_annotation(output_dict, file, height, width):
         annotation_file.write(annotation_str)
     return
 
+def create_csv(boxes, scores, image_name, header, index_to_class):
+    print("Updating csv...")
+    csv_path = "../images/results.csv"
+    with open(csv_path, 'a+', newline='') as csvfile:
+        fieldnames = ["image_name", "box", "bird"] + list(index_to_class.values())
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        for index in range(len(boxes)):
+            if header == False:
+                writer.writeheader()
+                header = True
+            row = {"image_name": image_name, "box": boxes[index].tolist(), "bird": round(sum(scores[index]), 2)}
+            for fieldname in index_to_class.values():
+                row[fieldname] = scores[index][list(index_to_class.values()).index(fieldname)]
+            writer.writerow(row)
+
 def main():
-    # walk through image files and label
+    sensor_sizes = {
+        "FC220": [6.16, 4.55],
+        "FC330": [6.16, 4.62],
+        "FC7203": [6.3, 4.7],
+        "FC6520": [17.3, 13],
+        "FC6310": [13.2, 8.8],
+        "L1D-20c": [13.2, 8.8]
+        }
+
+    # walk through image files and store in dataframe
+    images = pd.DataFrame(columns = ["image_path", "gsd", "region"])
+    # remove old results file
+    if os.path.exists("../images/results.csv"):
+        os.remove("../images/results.csv")
     for file in os.listdir("../images"):
         if file.lower().endswith((".jpg", ".jpeg")):
-            print("Labelling: ", file)
-            # get exif data and calculate gsd and region
+            print("Adding record for: ", file)
+            # get exif data and determine region
             image_path = os.path.join("../images", file)
             image = PIL.Image.open(image_path)
             image_width, image_height = image.size
-            # try getting gsd and region from image_metadata.txt file
-            image_metadata = json.load(open("image_metadata.json"))
-            gsd = image_metadata["gsd"]
-            region = image_metadata["region"]
-            if region != "unknown":
-                print("Using region from image_metadata.json")
-            else:
-                print("Couldn't get region from image_metadata.json")
-                print("Trying to get region from image metadata")
-                # load image exif data
-                exif_dict = piexif.load(image.info['exif'])
-                try:
-                    region = get_region(exif_dict)
-                    print("Region: ", region)
-                except:
-                    print("Couldn't determine region, so using all region model")
-            if gsd != "unknown":
-                print("Using gsd from image_metadata.json")
-            else:
-                print("Couldn't get gsd from image_metadata.json")
-                print("Trying to get gsd from image metadata")
-                # load image exif data
-                exif_dict = piexif.load(image.info['exif'])
-                try:
-                    gsd = get_gsd(exif_dict, image_path, image_width, image_height)
-                except:
-                    gsd = 100
-                    print("Couldn't determine gsd, so using all gsd model")
-            if gsd <= 0.015:
-                gsd_dir = "fine"
-            else: gsd_dir = "all"
-            # detect birds
-            device = torch.device("cpu")
-            detection_model_path = os.path.join("../models", gsd_dir)
-            age_model_path = os.path.join("../models", gsd_dir, "Age")
-            region_model_path = os.path.join("../models", gsd_dir, region)
-            detection_model = create_detection_model(detection_model_path, device)
-            boxes, bird_score, bird_label = detect_birds(detection_model_path, image_path, detection_model, device)
-            output_dict = {"boxes": [], "bird": [], "age": [], "species": []}
-            output_dict["boxes"].append(boxes)
-            for i in range(len(bird_label)):
-                named_labels_with_scores = {bird_label[i]: bird_score[i], "Background": 1 - bird_score[i]}
-                output_dict["bird"].append(named_labels_with_scores)
-            # classify age and species
-            for i in range(len(boxes)):
-                box = boxes[i]
-                box_left = box[0].item()
-                box_right = box[2].item()
-                box_top = box[1].item()
-                box_bottom = box[3].item()
+            # load image exif data
+            exif_dict = piexif.load(image.info['exif'])
+            # try calculating gsd
+            print("Trying to determine gsd from image metadata")
+            try:
+                height = get_xmp(image_path)
+                gsd = get_gsd(exif_dict, sensor_sizes, image_width, image_height, height)
+                print("GSD: ", gsd)
+            except:
+                gsd = 0.005
+                print("Couldn't determine gsd, assuming 0.0025 meters/pixel")
+            # try determining region from image metadata
+            print("Trying to determine region from image metadata")
+            try:
+                region = get_region(exif_dict)
+                print("Region: ", region)
+            except:
+                region = "Global"
+                print("Couldn't determine region, so including all species")
+            # convert dict of lists to dataframe and concat
+            images = pd.concat([images, pd.DataFrame({"image_path": [image_path], "gsd": [gsd], "region": [region]})])
+    # sort by gsd, then by region
+    images = images.sort_values(['gsd', 'region']).reset_index()
+    
+    # define constants
+    overlap = 150
+    patch_height = 800
+    patch_width = 800
+    reject = 25
+    header = False
 
-                instance = image.crop((box_left, box_top, box_right, box_bottom))
-                instance = prepare_image_for_classification(instance, device)
-                # create Age model and predict class
-                age_classification = classify(instance, age_model_path, device)
-                
-                output_dict["age"].append(age_classification)                   
-                if age_classification["adult"] > 0.5:
-                    # bird is an adult
-                    species_classification = classify(instance, region_model_path, device)
-                else:
-                    species_classification = {"unknown": 1.0}
-                output_dict["species"].append(species_classification)
-            # label image
-            create_image(image_path, output_dict)
-            # create label file
-            create_annotation(output_dict, file, image_width, image_height)
+    # create detection model
+    device = torch.device("cuda")
+    model_path = os.path.join("../models/bird-detector")
+    kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
+    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
+    birds_by_region = json.load(open(os.path.join(model_path, "birds_by_region.json")))
+    regional_filter = torch.zeros(len(index_to_class) + 1)
+    regional_filter[0] = 1
+    for i in range(1, len(index_to_class) + 1):
+        species = ' '.join(index_to_class[str(i)].split("_")[-2:])
+        if species in birds_by_region[region]:
+            regional_filter[i] = 1
+    model = create_detection_model(index_to_class, model_path, device, kwargs, regional_filter)
+
+    for _, row in images.iterrows():
+        gsd = row["gsd"]
+        image_path = row["image_path"]
+        image_name = os.path.basename(row["image_path"])
+        image = PIL.Image.open(image_path)
+        image_width, image_height = image.size
+        print("Annotating: ", image_name)
+        # detect birds
+        boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd)
+        # create label file
+        create_annotation(boxes, scores, image_name, image_width, image_height, index_to_class)
+        # create dictionary of results
+        if len(boxes) > 0:
+            create_csv(boxes, scores, image_name, header, index_to_class)
+        header = True
+    print("Done!")
 
 if __name__ == "__main__":
     main()
