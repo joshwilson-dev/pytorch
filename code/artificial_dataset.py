@@ -105,42 +105,42 @@ def transforms(instance, original_gsd, target_gsd, points=None):
     size = min(instance.size) / scale
     instance = T.Resize(size=int(size))(instance)
     # colour
-    lower = 0.9
-    upper = 1.1
-    colour = random.uniform(lower, upper)
-    instance = ImageEnhance.Color(instance)
-    instance = instance.enhance(colour)
-    contrast = random.uniform(lower, upper)
-    instance = ImageEnhance.Contrast(instance)
-    instance = instance.enhance(contrast)
-    brightness = random.uniform(lower, upper)
-    instance = ImageEnhance.Brightness(instance)
-    instance = instance.enhance(brightness)
+    # lower = 0.9
+    # upper = 1.1
+    # colour = random.uniform(lower, upper)
+    # instance = ImageEnhance.Color(instance)
+    # instance = instance.enhance(colour)
+    # contrast = random.uniform(lower, upper)
+    # instance = ImageEnhance.Contrast(instance)
+    # instance = instance.enhance(contrast)
+    # brightness = random.uniform(lower, upper)
+    # instance = ImageEnhance.Brightness(instance)
+    # instance = instance.enhance(brightness)
     # random hflip
-    hflip = random.randint(0, 1)
-    if hflip == 1:
-        instance = T.RandomHorizontalFlip(1)(instance)
+    # hflip = random.randint(0, 1)
+    # if hflip == 1:
+    #     instance = T.RandomHorizontalFlip(1)(instance)
     # random vflip
-    vflip = random.randint(0, 1)
-    if vflip == 1:
-        instance = T.RandomVerticalFlip(1)(instance)
+    # vflip = random.randint(0, 1)
+    # if vflip == 1:
+    #     instance = T.RandomVerticalFlip(1)(instance)
     # rotate
-    instance_width, instance_height = instance.size
-    centre = (instance_width/2, instance_height/2)
-    rotation = random.choice([0, 90, 180, 270])
-    instance = T.RandomRotation((rotation, rotation))(instance)
+    # instance_width, instance_height = instance.size
+    # centre = (instance_width/2, instance_height/2)
+    # rotation = random.choice([0, 90, 180, 270])
+    # instance = T.RandomRotation((rotation, rotation))(instance)
     # points
     if points != None:
         # scale
         points = tuple(tuple(item / scale for item in point) for point in points)
         # hflip
-        if hflip == 1:
-            points = tuple(tuple([2 * centre[0] - point[0], point[1]]) for point in points)
-        # vflip
-        if vflip == 1:
-            points = tuple(tuple([point[0], 2 * centre[1] - point[1]]) for point in points)
-        # rotate
-        points = tuple(rotate_point(point, centre, -rotation) for point in points)
+        # if hflip == 1:
+        #     points = tuple(tuple([2 * centre[0] - point[0], point[1]]) for point in points)
+        # # vflip
+        # if vflip == 1:
+        #     points = tuple(tuple([point[0], 2 * centre[1] - point[1]]) for point in points)
+        # # rotate
+        # points = tuple(rotate_point(point, centre, -rotation) for point in points)
     return instance, points
 
 def solve(df, threshold, data_type):
@@ -265,6 +265,7 @@ def save_dataset(dataset, test_train, patchsize):
                     # or is a species not included
                     elif "shadow" not in instance["species"]:
                         patch = blackout_instance(patch, instance["box"])
+            patch = T.Resize(size=int(800))(patch)
             # calculate md5 for cropped image
             md5hash = hashlib.md5(patch.tobytes()).hexdigest()
             patch_id = md5hash + ".JPG"
@@ -295,11 +296,11 @@ if len(file_path_variable) > 0:
     if check =="yes":
         os.chdir(file_path_variable)
         # create dictionaries to store data
-        patches = {"substrate": [], "gsd": [], "gsd_cat": [], "image_id": [], "patch_id": [], "patch_points": [], "species": [], "instance_id": [], "instance_path": [], "instance_mask": [], "patch_mask": [], "box": [], "iou_type": [], "overlap": [], "test": [], "hash": []}
+        patches = {"substrate": [], "gsd": [], "gsd_cat": [], "image_id": [], "patch_id": [], "patch_points": [], "species": [], "instance_id": [], "instance_path": [], "instance_mask": [], "patch_mask": [], "box": [], "iou_type": [], "overlap": [], "test": [], "target_gsd": [], "hash": []}
         classifiers = {"test": {}, "train/artificial": {}, "train/organic": {}}
         # specify gsd categories
         gsd_cats = ["error", "fine"]
-        gsd_bins = [0.003, 0.01]
+        gsd_bins = [0.0025, 0.0075]
         # specify regional categories
         # load json containing birds in each region
         birds_by_region = json.load(open("birds_by_region.json"))
@@ -308,7 +309,7 @@ if len(file_path_variable) > 0:
             for region in regions:
                 classifiers[test_train][region] = {"images": [], "labels": []}
             classifiers[test_train]["Global"] = {"images": [], "labels": []}
-        paths = ["detector_dataset/train/artificial", "detector_dataset/train/organic", "detector_dataset/test", "classifier_dataset/train/artificial", "classifier_dataset/train/organic", "classifier_dataset/test", "instances"]
+        paths = ["detector_dataset/train/artificial", "detector_dataset/train/organic", "detector_dataset/test", "classifier_dataset/train/artificial", "classifier_dataset/train/organic", "classifier_dataset/test", "instances", "delete"]
         for path in paths:
             if os.path.exists(path):
                 shutil.rmtree(path)
@@ -350,6 +351,16 @@ if len(file_path_variable) > 0:
                         continue
                     # determine image patch locations
                     width, height = original_image.size
+                    # rescale image to average gsd, this makes all
+                    # objects and birds a consistant size.
+                    target_gsd = gsd
+                    scale = target_gsd/gsd
+
+                    # scale original image to median gsd
+                    # width = int(width * scale)
+                    # height = int(height * scale)
+                    # original_image = original_image.resize((width, height))
+
                     patchsize = 800
                     n_crops_width = math.ceil(width / patchsize)
                     n_crops_height = math.ceil(height / patchsize)
@@ -362,6 +373,7 @@ if len(file_path_variable) > 0:
                     instance_paths = []
                     instance_masks = []
                     patch_masks = []
+                    num = 0
                     for height_index in range(n_crops_height):
                         for width_index in range(n_crops_width):
                             left = width_index * patchsize - pad_width
@@ -369,10 +381,15 @@ if len(file_path_variable) > 0:
                             top = height_index * patchsize - pad_height
                             bottom = top + patchsize
                             patch_points = (left, top, right, bottom)
-                            unpadded_patch_points = (max(patch_points[0],0), max(patch_points[1],0), min(patch_points[2],width), min(patch_points[3],height))
-                            # calculate colorhash
-                            unpadded_patch = original_image.crop(unpadded_patch_points)
-                            hash = str(imagehash.colorhash(unpadded_patch, binbits=4))
+                            # unpadded_patch_points = (max(patch_points[0],0), max(patch_points[1],0), min(patch_points[2],width), min(patch_points[3],height))
+                            # # calculate colorhash
+                            # unpadded_patch = original_image.crop(unpadded_patch_points)
+                            # md5hash = hashlib.md5(unpadded_patch.tobytes()).hexdigest()
+                            # delete_patch = os.path.join("delete", md5hash + ".PNG")
+                            # unpadded_patch.save(delete_patch)
+                            # hash = str(imagehash.colorhash(unpadded_patch, binbits=4))
+                            hash = "here"
+
                             # for each instance check if it belongs to this
                             # patch and record data if it does
                             if os.path.exists(annotation_path):
@@ -453,6 +470,7 @@ if len(file_path_variable) > 0:
                                     patches["overlap"].append(overlap)
                                     patches["test"].append(0)
                                     patches["hash"].append(hash)
+                                    patches["target_gsd"].append(target_gsd)
                                     instance_id += 1
                             else:
                                 patches["substrate"].append(substrate)
@@ -471,6 +489,7 @@ if len(file_path_variable) > 0:
                                 patches["overlap"].append(1)
                                 patches["test"].append(0)
                                 patches["hash"].append(hash)
+                                patches["target_gsd"].append(target_gsd)
                             patch_id += 1
 
         # convert dictionary to df
@@ -485,8 +504,8 @@ if len(file_path_variable) > 0:
             .size())
 
         # keep only instances with enough masks
-        min_instances = 50
-        test_instances = 20
+        min_instances = 0
+        test_instances = 0
         train_instances = 1000
 
         species_count = patches.loc[patches['iou_type'] == "polygon"]
@@ -557,8 +576,8 @@ if len(file_path_variable) > 0:
             .drop("_merge", axis=1)
             .reset_index())
 
-        save_dataset(test, "test", patchsize)
-        save_dataset(train, "train/organic", patchsize)
+        # save_dataset(test, "test", patchsize)
+        # save_dataset(train, "train/organic", patchsize)
 
         # create artificial training data
         # seperate dataframe of masks and shadows
@@ -576,24 +595,25 @@ if len(file_path_variable) > 0:
             shadows
             .sort_values('overlap', ascending=False)
             .drop_duplicates(['image_id','instance_id']))
-        reps = 15
+        reps = 1
         patch_number = 0
         for rep in range(reps):
             # group by hash and sample one image_id / patch_id from each
             # background
-            print(train.groupby(["image_id", "patch_id"]).ngroups)
-            print(train['hash'].nunique())
-            backgrounds = (
-                train
-                .drop_duplicates(['image_id','patch_id'])
-                .groupby("hash")
-                .sample(n=1, replace = True)[['image_id', 'patch_id']])
-            print(len(backgrounds["image_id"]))
-            backgrounds = pd.merge(train, backgrounds, how='outer', on = ["image_id", "patch_id"], indicator=True)
-            backgrounds = (
-                backgrounds
-                .loc[backgrounds._merge == 'both']
-                .reset_index())
+            # print(train.groupby(["image_id", "patch_id"]).ngroups)
+            # print(train['hash'].nunique())
+            # backgrounds = (
+            #     train
+            #     .drop_duplicates(['image_id','patch_id'])
+            #     .groupby("hash")
+            #     .sample(n=1, replace = True)[['image_id', 'patch_id']])
+            # print(len(backgrounds["image_id"]))
+            # backgrounds = pd.merge(train, backgrounds, how='outer', on = ["image_id", "patch_id"], indicator=True)
+            # backgrounds = (
+            #     backgrounds
+            #     .loc[backgrounds._merge == 'both']
+            #     .reset_index())
+            backgrounds = train
             total_images = len(backgrounds.groupby(['image_id', 'patch_id']).size()) * reps
             backgrounds = backgrounds.groupby('image_id')
             for image_id, patches in backgrounds:
@@ -608,7 +628,7 @@ if len(file_path_variable) > 0:
                 # iterate over patches
                 for patch_points, instances in patches:
                     # update gsd
-                    comments["gsd"] = instances["gsd"].iloc[0]
+                    comments["gsd"] = instances["target_gsd"].iloc[0]
                     exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
                     exif_bytes = piexif.dump(exif_dict)
                     # crop image
@@ -618,12 +638,12 @@ if len(file_path_variable) > 0:
                         if instance["box"] != "null" and "shadow" not in instance["species"]:
                             patch = blackout_instance(patch, instance["box"])
                     # change background quality
-                    background_gsd = random.uniform(gsd_bins[0], gsd_bins[1])
-                    scale = background_gsd/instances["gsd"].iloc[0]
-                    size = min(patch.size) / scale
-                    patch = T.Resize(size=int(size))(patch)
+                    # background_gsd = random.uniform(gsd_bins[0], gsd_bins[1])
+                    # scale = background_gsd/instances["gsd"].iloc[0]
+                    # size = min(patch.size) / scale
+                    # patch = T.Resize(size=int(size))(patch)
                     # transform the background
-                    patch, _ = transforms(patch, background_gsd, instances["gsd"].iloc[0])
+                    patch, _ = transforms(patch, instances["gsd"].iloc[0], instances["target_gsd"].iloc[0])
                     # randomly sample masks of species
                     species = random.choice(pd.unique(masks['species']))
                     common_name = species.split("_")[0]
@@ -639,13 +659,13 @@ if len(file_path_variable) > 0:
                         # crop the mask out
                         points = bird_data["instance_mask"]
                         # change bird quality
-                        bird_gsd = random.uniform(gsd_bins[0], gsd_bins[1])
-                        scale = bird_gsd/bird_data["gsd"]
-                        size = min(bird.size) / scale
-                        bird = T.Resize(size=int(size))(bird)
-                        points = tuple(tuple(item / scale for item in point) for point in points)
+                        # bird_gsd = random.uniform(gsd_bins[0], gsd_bins[1])
+                        # scale = bird_gsd/bird_data["gsd"]
+                        # size = min(bird.size) / scale
+                        # bird = T.Resize(size=int(size))(bird)
+                        # points = tuple(tuple(item / scale for item in point) for point in points)
                         # transform the mask
-                        bird, points = transforms(bird, bird_gsd, instances["gsd"].iloc[0], points)
+                        bird, points = transforms(bird, bird_data["gsd"], instances["target_gsd"].iloc[0], points)
                         # determine locatoins to paste instances
                         if pasted == 0:
                             # determine random positions in background
@@ -674,12 +694,12 @@ if len(file_path_variable) > 0:
                             shadow = Image.open(shadow_row["instance_path"].item()).convert("RGBA")
                             shadow_points = shadow_row["instance_mask"].item()
                             # change quality of shadow
-                            scale = bird_gsd/shadow_row["gsd"]
-                            size = min(shadow.size) / scale
-                            shadow = T.Resize(size=int(size))(shadow)
-                            shadow_points = tuple(tuple(item / scale for item in point) for point in shadow_points)
+                            # scale = bird_gsd/shadow_row["gsd"]
+                            # size = min(shadow.size) / scale
+                            # shadow = T.Resize(size=int(size))(shadow)
+                            # shadow_points = tuple(tuple(item / scale for item in point) for point in shadow_points)
                             # transform the mask
-                            shadow, _ = transforms(shadow, bird_gsd, instances["gsd"].iloc[0], shadow_points)
+                            shadow, _ = transforms(shadow, shadow_row["gsd"], instances["target_gsd"].iloc[0], shadow_points)
                             shadow_offset = int(min(bird.size)/2)
                             shadow_position_x = left + random.randint(-shadow_offset, shadow_offset)
                             shadow_position_y = top + random.randint(-shadow_offset, shadow_offset)

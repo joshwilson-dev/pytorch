@@ -6,8 +6,6 @@ import json
 import math
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 import piexif
-import torch.nn as nn
-from torchvision import models, transforms
 import shapefile
 from shapely.geometry import Point
 from shapely.geometry import shape
@@ -15,6 +13,83 @@ from torchvision.models.detection.anchor_utils import AnchorGenerator
 import csv
 import math
 import pandas as pd
+from torchvision.models.detection import roi_heads
+import torch.nn.functional as F
+from torchvision.ops import boxes as box_ops
+import itertools
+
+# redefining the postprocess_detctions function to include
+# filtering
+def postprocess_detections(
+    self,
+    class_logits,  # type: Tensor
+    box_regression,  # type: Tensor
+    proposals,  # type: List[Tensor]
+    image_shapes,  # type: List[Tuple[int, int]]
+):
+    # type: (...) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]
+    device = class_logits.device
+    num_classes = class_logits.shape[-1]
+
+    boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+    pred_boxes = self.box_coder.decode(box_regression, proposals)
+
+    # filter the logits, apply softmax, restore filtered scores as 0
+    filter_index = self.filter.nonzero().squeeze()
+    class_logits_filtered = class_logits[:, filter_index]
+    src = F.softmax(class_logits_filtered, -1)
+    index = filter_index.repeat(len(class_logits), 1)
+    pred_scores = torch.zeros(len(class_logits), len(self.filter)).to(torch.device("cuda")).scatter_(1, index, src)
+
+    pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
+    pred_scores_list = pred_scores.split(boxes_per_image, 0)
+
+    all_boxes = []
+    all_scores = []
+    all_labels = []
+    all_class_scores = []
+    for boxes, scores, image_shape in zip(pred_boxes_list, pred_scores_list, image_shapes):
+        boxes = box_ops.clip_boxes_to_image(boxes, image_shape)
+
+        # create labels for each prediction
+        labels = torch.arange(num_classes, device=device)
+        labels = labels.view(1, -1).expand_as(scores)
+
+        # remove predictions with the background label
+        boxes = boxes[:, 1:]
+        scores = scores[:, 1:]
+        labels = labels[:, 1:]
+
+        # batch everything, by making every class prediction be a separate instance
+        boxes = boxes.reshape(-1, 4)
+        class_scores = scores.repeat_interleave(5, dim = 0) # JW keeping all scores
+        scores = scores.reshape(-1)
+        labels = labels.reshape(-1)
+        # print("\n", scores)
+        # print(class_scores)
+
+        # remove low scoring boxes
+        # inds = torch.where(torch.max(scores, 1).values > self.score_thresh)[0] # attempt to keep all scores
+        inds = torch.where(scores > self.score_thresh)[0]
+        boxes, scores, labels, class_scores = boxes[inds], scores[inds], labels[inds], class_scores[inds]
+
+        # remove empty boxes
+        keep = box_ops.remove_small_boxes(boxes, min_size=1e-2)
+        boxes, scores, labels, class_scores = boxes[keep], scores[keep], labels[keep], class_scores[keep]
+
+        # non-maximum suppression, independently done per class
+        keep = box_ops.batched_nms(boxes, scores, labels, self.nms_thresh)
+        # keep only topk scoring predictions
+        keep = keep[: self.detections_per_img]
+        boxes, scores, labels, class_scores = boxes[keep], scores[keep], labels[keep], class_scores[keep]
+
+        all_boxes.append(boxes)
+        all_scores.append(scores)
+        all_labels.append(labels)
+        all_class_scores.append(class_scores)
+
+    return all_boxes, all_scores, all_labels, all_class_scores
+roi_heads.RoIHeads.postprocess_detections = postprocess_detections
 
 def get_xmp(image_file_path):
     # get xmp information
@@ -91,25 +166,28 @@ def get_region(exif_dict):
         print("Couldn't get continent")
     return region
 
-def create_detection_model(det_index_to_class):
-    num_classes = len(det_index_to_class) + 1
+def create_detection_model(index_to_class, model_path, device, kwargs, regional_filter):
+    num_classes = len(index_to_class) + 1
     backbone = resnet_fpn_backbone(backbone_name = "resnet101", weights = "DEFAULT")
     box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
-    return box_predictor, backbone
-
-def update_detection_model(model_path, device, box_predictor, backbone, kwargs, anchor_sizes):
+    anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
     aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
     rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
     kwargs["rpn_anchor_generator"] = rpn_anchor_generator
     model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
-    model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict-artificial-hash.pth"), map_location=device))
+    model.roi_heads.filter = regional_filter.to(device)
+    model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict.pth"), map_location=device))
     model.eval()
     model = model.to(device)
     return model
 
-def prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height):
+def prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height, gsd):
     original_image = PIL.Image.open(image_path).convert('RGB')
+    scale = 0.0025/gsd
     width, height = original_image.size
+    width = int(width / scale)
+    height = int(height / scale)
+    original_image = original_image.resize((width, height)) 
     n_crops_width = math.ceil((width - overlap) / (patch_width - overlap))
     n_crops_height = math.ceil((height - overlap) / (patch_height - overlap))
     padded_width = n_crops_width * (patch_width - overlap) + overlap
@@ -131,18 +209,17 @@ def prepare_image_for_detection(image_path, device, overlap, patch_width, patch_
             patches.append(patch)
     batch = torch.empty(0, 3, patch_height, patch_width).to(device)
     for patch in patches:
-        patch = transforms.PILToTensor()(patch)
-        patch = transforms.ConvertImageDtype(torch.float)(patch)
+        patch = torchvision.transforms.PILToTensor()(patch)
+        patch = torchvision.transforms.ConvertImageDtype(torch.float)(patch)
         patch = patch.unsqueeze(0)
         patch = patch.to(device)
         batch = torch.cat((batch, patch), 0)
-    return batch, pad_width, pad_height, n_crops_height, n_crops_width
+    return batch, pad_width, pad_height, n_crops_height, n_crops_width, scale
 
-def detect_birds(model_path, image_path, model, device, det_index_to_class, overlap, patch_width, patch_height, reject):
-    kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
+def detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd):
     print("Patching...")
-    batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height)
-    max_batch_size = 5
+    batch, pad_width, pad_height, n_crops_height, n_crops_width, scale = prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height, gsd)
+    max_batch_size = 10
     batch_length = batch.size()[0]
     sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
     sub_batch_lengths.append(batch_length % max_batch_size)
@@ -155,12 +232,14 @@ def detect_birds(model_path, image_path, model, device, det_index_to_class, over
             predictions.extend(prediction)
     boxes = torch.empty(0, 4)
     scores = torch.empty(0)
+    class_scores = torch.empty(0, len(index_to_class))
     labels = torch.empty(0, dtype=torch.int64)
     for height_index in range(n_crops_height):
         for width_index in range(n_crops_width):
             patch_index = height_index * n_crops_width + width_index
             batch_boxes = predictions[patch_index]["boxes"]
             batch_scores = predictions[patch_index]["scores"]
+            batch_class_scores = predictions[patch_index]["class_scores"]
             batch_labels = predictions[patch_index]["labels"]
             # if box near overlapping edge, drop the entire box
             sides = []
@@ -179,96 +258,49 @@ def detect_birds(model_path, image_path, model, device, det_index_to_class, over
                 else: index = batch_boxes[:, side] < patch_width - reject
                 batch_boxes = batch_boxes[index]
                 batch_scores = batch_scores[index]
+                batch_class_scores = batch_class_scores[index]
                 batch_labels = batch_labels[index]
             padding_left = (patch_width - overlap) * width_index - pad_width
             padding_top = (patch_height - overlap) * height_index - pad_height
+            #scale
             adjustment = torch.tensor([[padding_left, padding_top, padding_left, padding_top]])
             adj_boxes = torch.add(adjustment, batch_boxes.to(torch.device("cpu")))
+            adj_boxes = torch.mul(adj_boxes, scale)
             boxes = torch.cat((boxes, adj_boxes), 0)
             scores = torch.cat((scores, batch_scores.to(torch.device("cpu"))), 0)
+            class_scores = torch.cat((class_scores, batch_class_scores.to(torch.device("cpu"))), 0)
             labels = torch.cat((labels, batch_labels.to(torch.device("cpu"))), 0)
-    nms_indices = torchvision.ops.nms(boxes, scores, kwargs["box_nms_thresh"])
+    nms_indices = torchvision.ops.batched_nms(boxes, scores, labels, kwargs["box_nms_thresh"])
     boxes = boxes[nms_indices]
     scores = scores[nms_indices].tolist()
+    class_scores = class_scores[nms_indices].tolist()
     labels = labels[nms_indices].tolist()
-    named_labels = [det_index_to_class[str(i)] for i in labels]
-    return boxes, scores, named_labels
+    return boxes, class_scores
 
-def create_classification_model():
-    model = models.resnet101(weights='ResNet101_Weights.DEFAULT')
-    features = model.fc.in_features
-    return model, features
-
-def update_classification_model(model_base, features, device, index_to_class, model_path):
-    num_classes = len(index_to_class)
-    model_base.fc = nn.Linear(features, num_classes)
-    model = model_base.to(device)
-    model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict.pth")))
-    model.eval()
-    return model
-
-def prepare_image_for_classification(image, device):
-    image = image.convert('RGB')
-    # pad crop to square
-    width, height = image.size
-    max_dim = max(width, height)
-    if height > width:
-        pad = [int((height - width) / 2) + 20, 20]
-    else:
-        pad = [20, int((width - height)/2) + 20]
-    image = transforms.Pad(padding=pad)(image)
-    image = transforms.CenterCrop(size=max_dim)(image)
-    # resize crop to 224
-    image = transforms.Resize(224)(image)
-    image = transforms.ToTensor()(image)
-    image = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(image)
-    image = image.unsqueeze(0)
-    image = image.to(device)
-    return image
-
-def classify(batch, model, index_to_class, output_dict):
-    print("Classifying...")
-    max_batch_size = 5
-    batch_length = batch.size()[0]
-    sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
-    sub_batch_lengths.append(batch_length % max_batch_size)
-    sub_batches = torch.split(batch, sub_batch_lengths)
-    predictions = []
-    with torch.no_grad():
-        for sub_batch in sub_batches:
-            prediction = model(sub_batch)
-            predictions.extend(prediction)
-    named_labels = list(index_to_class.values())
-    for instance_index in range(len(batch)):
-        named_labels_with_pred = {}
-        prediction = torch.nn.functional.softmax(predictions[instance_index], dim=0).tolist()
-        for class_index in range(len(named_labels)):
-            named_labels_with_pred[named_labels[class_index]] = prediction[class_index]
-        output_dict["species"].append(named_labels_with_pred)
-    return output_dict
-
-def create_annotation(output_dict, image_name, width, height):
+def create_annotation(boxes, scores, image_name, width, height, index_to_class):
     print("Creating annotation...")
     points = []
-    labels = []
-    scores = []
-    for index in range(len(output_dict["boxes"][0])):
-        box = output_dict["boxes"][0][index]
+    species_labels = []
+    species_scores = []
+    bird_scores = []
+    # print(output_dict["boxes"][0])
+    for index in range(len(boxes)):
+        box = boxes[index]
         points.append([
             [float(box[0]), float(box[1])],
             [float(box[2]), float(box[3])]])
-        bird_score = round(output_dict["bird"][index]['Bird'], 2)
-        species_scores = output_dict["species"][index]
-        species_score = round(max(species_scores.values()), 2)
-        label = max(species_scores, key=species_scores.get).split("_")[0]
-        labels.append(label)
-        scores.append([bird_score, species_score])
+        bird_score = round(sum(scores[index]), 2)
+        species_score = round(max(scores[index]), 2)
+        species_label = index_to_class[str(scores[index].index(max(scores[index])) + 1)]
+        species_labels.append(species_label)
+        bird_scores.append(bird_score)
+        species_scores.append(species_score)
     label_name = os.path.splitext(image_name)[0] + '.json'
     label_path = os.path.join("../images", label_name)
     shapes = []
-    for i in range(0, len(labels)):
+    for i in range(0, len(species_labels)):
         shapes.append({
-            "label": "Bird: " + str(scores[i][0]) + " - " + labels[i] + ": " + str(scores[i][1]),
+            "label": ' '.join(("Bird:",str(bird_scores[i]), "-", species_labels[i] + ":", str(species_scores[i]))),
             "points": points[i],
             "group_id": 'null',
             "shape_type": "rectangle",
@@ -286,23 +318,19 @@ def create_annotation(output_dict, image_name, width, height):
         annotation_file.write(annotation_str)
     return
 
-def create_csv(output_dict, image_name, header):
+def create_csv(boxes, scores, image_name, header, index_to_class):
     print("Updating csv...")
     csv_path = "../images/results.csv"
     with open(csv_path, 'a+', newline='') as csvfile:
-        bird = list(output_dict['bird'][0].keys())
-        species = list(output_dict['species'][0].keys())
-        fieldnames = ["image_name", "box"] + bird + species
+        fieldnames = ["image_name", "box", "bird"] + list(index_to_class.values())
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        for index in range(len(output_dict["boxes"][0])):
+        for index in range(len(boxes)):
             if header == False:
                 writer.writeheader()
                 header = True
-            row = {"image_name": image_name, "box": output_dict["boxes"][0][index]}
-            for fieldname in bird:
-                row[fieldname] = output_dict["bird"][index][fieldname]
-            for fieldname in species:
-                row[fieldname] = output_dict["species"][index][fieldname]
+            row = {"image_name": image_name, "box": boxes[index].tolist(), "bird": round(sum(scores[index]), 2)}
+            for fieldname in index_to_class.values():
+                row[fieldname] = scores[index][list(index_to_class.values()).index(fieldname)]
             writer.writerow(row)
 
 def main():
@@ -317,6 +345,9 @@ def main():
 
     # walk through image files and store in dataframe
     images = pd.DataFrame(columns = ["image_path", "gsd", "region"])
+    # remove old results file
+    if os.path.exists("../images/results.csv"):
+        os.remove("../images/results.csv")
     for file in os.listdir("../images"):
         if file.lower().endswith((".jpg", ".jpeg")):
             print("Adding record for: ", file)
@@ -334,7 +365,7 @@ def main():
                 print("GSD: ", gsd)
             except:
                 gsd = 0.005
-                print("Couldn't determine gsd, so using 0.005 gsd to filter anchors")
+                print("Couldn't determine gsd, assuming 0.0025 meters/pixel")
             # try determining region from image metadata
             print("Trying to determine region from image metadata")
             try:
@@ -342,9 +373,9 @@ def main():
                 print("Region: ", region)
             except:
                 region = "Global"
-                print("Couldn't determine region, so using global model")
+                print("Couldn't determine region, so including all species")
+            # convert dict of lists to dataframe and concat
             images = pd.concat([images, pd.DataFrame({"image_path": [image_path], "gsd": [gsd], "region": [region]})])
-    # convert dict of lists to dataframe
     # sort by gsd, then by region
     images = images.sort_values(['gsd', 'region']).reset_index()
     
@@ -353,86 +384,36 @@ def main():
     patch_height = 800
     patch_width = 800
     reject = 25
-
     header = False
 
-    base_anchor_sizes_px = ((32,), (64,), (128,), (256,), (512,))
-    anchor_sizes_px = base_anchor_sizes_px
-    detector_model_path = os.path.join("../models/full-model/bird-detector")
-    det_kwargs = json.load(open(os.path.join(detector_model_path, "kwargs.txt")))
-    min_anchor_m = 0.2
-    max_anchor_m = 1.3
-
-    # create base detection model
+    # create detection model
     device = torch.device("cuda")
-    # device = torch.device("cpu")
-    det_index_to_class = json.load(open(os.path.join(detector_model_path, "index_to_class.json")))
-    box_predictor, backbone = create_detection_model(det_index_to_class)
-    detection_model = update_detection_model(detector_model_path, device, box_predictor, backbone, det_kwargs, anchor_sizes_px)
-    # create base classification model
-    clas_model_base, class_features = create_classification_model()
-    region = "Oceania"
-    clas_model_path = os.path.join("../models/full-model/bird-classifier", region)
-    clas_index_to_class = json.load(open(os.path.join(clas_model_path, "index_to_class.json")))
-    clas_model = update_classification_model(clas_model_base, class_features, device, clas_index_to_class, clas_model_path)
+    model_path = os.path.join("../models/bird-detector-final")
+    kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
+    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
+    birds_by_region = json.load(open(os.path.join(model_path, "birds_by_region.json")))
+    regional_filter = torch.zeros(len(index_to_class) + 1)
+    regional_filter[0] = 1
+    for i in range(1, len(index_to_class) + 1):
+        species = ' '.join(index_to_class[str(i)].split("_")[-2:])
+        if species in birds_by_region[region]:
+            regional_filter[i] = 1
+    model = create_detection_model(index_to_class, model_path, device, kwargs, regional_filter)
 
     for _, row in images.iterrows():
         gsd = row["gsd"]
-        temp_region = row["region"]
         image_path = row["image_path"]
         image_name = os.path.basename(row["image_path"])
         image = PIL.Image.open(image_path)
         image_width, image_height = image.size
         print("Annotating: ", image_name)
-        # set up results
-        output_dict = {"boxes": [], "bird": [], "species": []}
-        # update detection model if new anchors
-        temp_anchor_sizes_px = []
-        for px in base_anchor_sizes_px:
-            anchor_m = px[0] * gsd
-            if anchor_m >= min_anchor_m and anchor_m <= max_anchor_m:
-                temp_anchor_sizes_px.append([px[0],])
-            else:
-                temp_anchor_sizes_px.append([0,])
-        tp_anchor_sizes_px = tuple(tuple(sub) for sub in temp_anchor_sizes_px)
-        if anchor_sizes_px != tp_anchor_sizes_px:
-            print("Updating detection model with new gsd bracket")
-            anchor_sizes_px = tp_anchor_sizes_px
-            detection_model = update_detection_model(detector_model_path, device, box_predictor, backbone, det_kwargs, anchor_sizes_px)
-        print(anchor_sizes_px)
         # detect birds
-        boxes, bird_score, bird_label = detect_birds(detector_model_path, image_path, detection_model, device, det_index_to_class, overlap, patch_width, patch_height, reject)
-        output_dict["boxes"].append(boxes)
-        for i in range(len(bird_label)):
-            named_labels_with_scores = {bird_label[i]: bird_score[i], "Background": 1 - bird_score[i]}
-            output_dict["bird"].append(named_labels_with_scores)
-        # classify species
-        if region != temp_region:
-            print("Updating classifier with new region")
-            region = temp_region
-            clas_model_path = os.path.join("../models/full-model/bird-classifier", region)
-            clas_index_to_class = json.load(open(os.path.join(clas_model_path, "index_to_class.json")))
-            clas_model = update_classification_model(clas_model_base, class_features, device, clas_index_to_class, clas_model_path)
-        batch = torch.empty(0, 3, 224, 224).to(device)
-        for i in range(len(boxes)):
-            # crop out the detected bird and pass to classifier
-            box = boxes[i]
-            box_left = box[0].item()
-            box_right = box[2].item()
-            box_top = box[1].item()
-            box_bottom = box[3].item()
-            instance = image.crop((box_left, box_top, box_right, box_bottom))
-            # prepare the crop for classification
-            instance = prepare_image_for_classification(instance, device)
-            # add to batch
-            batch = torch.cat((batch, instance), 0)
-        # classify the species of the crops
-        output_dict = classify(batch, clas_model, clas_index_to_class, output_dict)
+        boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd)
         # create label file
-        create_annotation(output_dict, image_name, image_width, image_height)
-        if len(output_dict["bird"]) > 0:
-            # create dictionary of results
-            create_csv(output_dict, image_name, header)
+        create_annotation(boxes, scores, image_name, image_width, image_height, index_to_class)
+        # create dictionary of results
+        if len(boxes) > 0:
+            create_csv(boxes, scores, image_name, header, index_to_class)
         header = True
     print("Done!")
 

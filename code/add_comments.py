@@ -120,6 +120,7 @@ if len(file_path_variable) > 0:
                     exif_dict = piexif.load(image.info['exif'])
                     try:
                         # check if XPcomment tag already contains required metrics
+                        print(comment)
                         comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
                         ecosystem_typology = is_float(comments["ecosystem typology"])
                         latitude = is_float(comments["latitude"])
@@ -240,7 +241,8 @@ if len(file_path_variable) > 0:
                         print("calculating gsd...")
                         # calculate drone height above surface
                         # get ground elevation at drone location, if possible
-                        elevation = get_elevation(latitude, longitude)
+                        # elevation = get_elevation(latitude, longitude)
+                        elevation = "unknown"
                         try: height
                         except: height = altitude - elevation
                         # get the gsd & associated metrics

@@ -217,13 +217,13 @@ def main(args):
     
     # Josh Wilson
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
-    # dataset_test, _ = get_dataset(args.dataset, "test", get_transform(False, args), args.data_path, args.numclasses)
+    dataset_test, _ = get_dataset(args.dataset, "test", get_transform(False, args), args.data_path, args.numclasses)
     
-    dataset_test, _ = get_dataset(args.dataset, "train", get_transform(False, args), args.data_path, args.numclasses)
-    train_size = int(0.75 * len(dataset))
-    test_size = len(dataset) - train_size
-    dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
-    _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
+    # dataset_test, _ = get_dataset(args.dataset, "train", get_transform(False, args), args.data_path, args.numclasses)
+    # train_size = int(0.75 * len(dataset))
+    # test_size = len(dataset) - train_size
+    # dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
+    # _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
     # Josh Wilson
     print("Creating data loaders")
     if args.distributed:
@@ -262,10 +262,10 @@ def main(args):
         aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
         rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
         kwargs = {
-            "box_fg_iou_thresh": 0.7,
-            "box_bg_iou_thresh": 0.3,
-            "rpn_anchor_generator": rpn_anchor_generator,
-            "box_positive_fraction": args.box_positive_fraction}
+            # "box_fg_iou_thresh": 0.7,
+            # "box_bg_iou_thresh": 0.3,
+            "rpn_anchor_generator": rpn_anchor_generator}
+            # "box_positive_fraction": args.box_positive_fraction}
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
         model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone, **kwargs)
@@ -349,7 +349,6 @@ def main(args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
-        # lr_scheduler.step()
         if args.output_dir:
             checkpoint = {
                 "model": model_without_ddp.state_dict(),
@@ -360,12 +359,14 @@ def main(args):
             }
             if args.amp:
                 checkpoint["scaler"] = scaler.state_dict()
-            # utils.save_on_master(checkpoint, os.path.join(args.output_dir, f"model_{epoch}.pth"))
 
         # Josh Wilson
         results = evaluate(model, data_loader_test, device=device)
         mAP = results.coco_eval["bbox"].stats[0]
         writer.add_scalar("mAP", mAP, epoch)
+        utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
+        utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
+            
         if mAP > best_mAP:
             print("The model improved this epoch")
             # save best model and state dict

@@ -72,7 +72,7 @@ Method:
 			hashmethod = sys.argv[i]
 			if hashmethod == 'ahash':
 				def hashfunc(img):
-					return imagehash.average_hash(img, hash_size=5)
+					return imagehash.average_hash(img, hash_size=2)
 			elif hashmethod == 'phash':
 				hashfunc = imagehash.phash
 			elif hashmethod == 'dhash':
@@ -80,12 +80,14 @@ Method:
 					return imagehash.dhash(img, hash_size=2)
 			elif hashmethod == 'whash-haar':
 				hashfunc = imagehash.whash
+				def hashfunc(img):
+					return imagehash.whash(img, hash_size=2, image_scale=None, mode='haar', remove_max_haar_ll=True)
 			elif hashmethod == 'whash-db4':
 				def hashfunc(img):
-					return imagehash.whash(img, mode='db4')
+					return imagehash.whash(img, hash_size=8, image_scale=None, mode='db4', remove_max_haar_ll=True)
 			elif hashmethod == 'colorhash':
 				def hashfunc(img):
-					return imagehash.colorhash(img, binbits=4)
+					return imagehash.colorhash(img, binbits=10)
 			elif hashmethod == 'crop-resistant':
 				imagehash.crop_resistant_hash
 			else:

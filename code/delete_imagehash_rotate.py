@@ -11,7 +11,6 @@ import shutil
 Demo of hashing
 """
 
-
 def find_similar_images(userpaths, hashfuncs):
 	def is_image(filename):
 		f = filename.lower()
@@ -24,19 +23,29 @@ def find_similar_images(userpaths, hashfuncs):
 		image_filenames += [os.path.join(userpath, path) for path in os.listdir(userpath) if is_image(path)]
 	images = {}
 	rotations = [0, 90, 180, 270]
+	hflips = [True, False]
+	vflips = [True, False]
 	for img in sorted(image_filenames):
 		hash = []
 		image = Image.open(img)
-		for rotation in rotations:
-			image_rot = image.rotate(rotation)
-			hash.append(str(hashfunc(image_rot)))
+		for vflip in vflips:
+			if vflip == True:
+				image_trans = image.transpose(Image.FLIP_TOP_BOTTOM)
+			for hflip in hflips:
+				if hflip == True:
+					image_trans = image_trans.transpose(Image.FLIP_TOP_BOTTOM)
+				for rotation in rotations:
+					image_trans = image_trans.rotate(rotation)
+					hash.append(str(hashfunc(image_trans)))
 		# check if any element of the string is in any key of images dictionary
+		match = False
 		if len(images.keys()) > 0:
 			for key in images.keys():
 				if any(h in key for h in hash):
 					hash = key
-				else:
-					hash = ''.join(hash)
+					match = True
+			if match != True:
+				hash = ''.join(hash)
 		else:
 			hash = ''.join(hash)
 		images[hash] = images.get(hash, []) + [img]
@@ -85,7 +94,7 @@ Method:
 				hashfunc = imagehash.phash
 			elif hashmethod == 'dhash':
 				def hashfunc(img):
-					return imagehash.dhash(img, hash_size=2)
+					return imagehash.dhash(img, hash_size=6)
 			elif hashmethod == 'whash-haar':
 				hashfunc = imagehash.whash
 			elif hashmethod == 'whash-db4':

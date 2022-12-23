@@ -1,7 +1,7 @@
 import math
 from PIL import Image, ImageDraw
 from PIL import ImagePath 
-  
+
 xy = [[100,0], [200,200], [0,200]]  
 xy = [tuple(point) for point in xy]
 image = ImagePath.Path(xy).getbbox()  
