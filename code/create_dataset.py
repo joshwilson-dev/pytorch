@@ -23,14 +23,11 @@ import json
 import piexif
 import pandas as pd
 import random
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw
 import numpy as np
 import hashlib
-import torchvision.transforms as T
 import shutil
 from ortools.sat.python import cp_model
-import sys
-import imagehash
 
 #################
 #### Content ####
@@ -240,11 +237,6 @@ if len(file_path_variable) > 0:
             "ecosystem", "instance_object", "instance_id", "instance_class",
             "instance_box", "instance_shape_type", "instance_overlap"]
         data = {k:[] for k in dataset_keys}
-        # data = {
-        #     "image_id": [], "image_exif": [], "image_gsd": [],
-        #     "patch_object": [], "patch_id": [], "ecosystem": [],
-        #     "instance_object": [], "instance_id": [], "instance_class": [],
-        #     "instance_box": [], "instance_shape_type": [], "instance_overlap": []}
         # variables
         target_gsd = 0.0025
         max_gsd = 0.0075
