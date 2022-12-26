@@ -215,7 +215,6 @@ def main(args):
     # Data loading code
     print("Loading data")
     
-    # Josh Wilson
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
     dataset_test, _ = get_dataset(args.dataset, "test", get_transform(False, args), args.data_path, args.numclasses)
     
@@ -224,7 +223,7 @@ def main(args):
     # test_size = len(dataset) - train_size
     # dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
     # _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
-    # Josh Wilson
+
     print("Creating data loaders")
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
@@ -256,7 +255,6 @@ def main(args):
 
     print("Creating model")
 
-    # Josh Wilson additions 01/07/2021
     if args.custommodel == 1:
         anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
         aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
@@ -269,7 +267,6 @@ def main(args):
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
         model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone, **kwargs)
-    # Josh Wilson additions 01/07/2021
     else:
         kwargs = {"trainable_backbone_layers": args.trainable_backbone_layers}
         if args.data_augmentation in ["multiscale", "lsj"]:
