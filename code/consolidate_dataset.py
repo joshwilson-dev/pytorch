@@ -52,17 +52,15 @@ if len(file_path_variable) > 0:
         "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
-        mask_dataset = "dataset/masks"
-        background_dataset = "dataset/backgrounds"
-        for path in mask_dataset, background_dataset:
-            if os.path.exists(path):
-                shutil.rmtree(path)
-            os.makedirs(path)
+        input = "input"
+        if os.path.exists(input):
+            shutil.rmtree(input)
+        os.makedirs(input)
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
                 if "dataset" not in root:
-                    if "fully annotated" in root:
+                    if "fully annotated" in root or "backgrounds" in root:
                         if file.endswith(".json"):
                             annotation_file_name = file
                             annotation_file_path = os.path.join(root, annotation_file_name)
@@ -70,10 +68,5 @@ if len(file_path_variable) > 0:
                             image_file_name = annotation["imagePath"]
                             image_file_path = os.path.join(root, image_file_name)
                             print(image_file_path)
-                            shutil.copyfile(image_file_path, os.path.join(mask_dataset, image_file_name))
-                            shutil.copyfile(annotation_file_path, os.path.join(mask_dataset, annotation_file_name))
-                    if "backgrounds" in root:
-                        if file.endswith(".JPG"):
-                            image_file_path = os.path.join(root, file)
-                            print(image_file_path)
-                            shutil.copyfile(image_file_path, os.path.join(background_dataset, file))
+                            shutil.copyfile(image_file_path, os.path.join(input, image_file_name))
+                            shutil.copyfile(annotation_file_path, os.path.join(input, annotation_file_name))

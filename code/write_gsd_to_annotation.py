@@ -101,7 +101,7 @@ if len(file_path_variable) > 0:
                         print("\tAnnotation doesn't exist, skipping file")
                         continue
                     try:
-                        gsd = annotation["flags"]["gsd"]
+                        gsd = annotation["gsd"]
                         print("\tGSD already in annotation, skipping file")
                         continue
                     except:
@@ -138,7 +138,7 @@ if len(file_path_variable) > 0:
                             print("\tCouldn't calculate GSD, skipping file")
                             continue
                         # add gsd to annotation
-                        annotation["flags"]["gsd"] = gsd
+                        annotation["gsd"] = gsd
                         annotation = json.dumps(annotation, indent = 2).replace('"null"', 'null')
                         with open(annotation_file_path, 'w') as annotation_file:
                             annotation_file.write(annotation)
