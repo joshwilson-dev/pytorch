@@ -549,6 +549,7 @@ class SimpleCopyPaste(torch.nn.Module):
     def forward(
         self, images: List[torch.Tensor], targets: List[Dict[str, Tensor]]
     ) -> Tuple[List[torch.Tensor], List[Dict[str, Tensor]]]:
+        print(images)
         torch._assert(
             isinstance(images, (list, tuple)) and all([isinstance(v, torch.Tensor) for v in images]),
             "images should be a list of tensors",
@@ -591,10 +592,3 @@ class SimpleCopyPaste(torch.nn.Module):
     def __repr__(self) -> str:
         s = f"{self.__class__.__name__}(blending={self.blending}, resize_interpolation={self.resize_interpolation})"
         return s
-
-# Josh Wilson addiitions 01/07/2021
-class ToTensor(object):
-    def __call__(self, image, target):
-        image = F.to_tensor(image)
-        return image, target
-# Josh Wilson addiitions 01/07/2021

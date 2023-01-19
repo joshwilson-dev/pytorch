@@ -24,9 +24,6 @@ import json
 #################
 #### Content ####
 #################
-# image_file_path = os.path.abspath("C:/Users/uqjwil54/Documents/trial/2022-10-11 1020/backgrounds/fc61990811f490df4b32a7780fff688d.JPG")
-# background_dataset = "C:/Users/uqjwil54/Documents/trial/dataset/backgrounds/fc61990811f490df4b32a7780fff688d.JPG"
-# shutil.copyfile(image_file_path, background_dataset)
 
 # create function for user to select dir
 root = tkinter.Tk()
@@ -52,21 +49,19 @@ if len(file_path_variable) > 0:
         "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
-        input = "input"
-        if os.path.exists(input):
-            shutil.rmtree(input)
-        os.makedirs(input)
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
-                if "dataset" not in root:
-                    if "fully annotated\\mask" in root or "backgrounds" in root:
-                        if file.endswith(".json"):
-                            annotation_file_name = file
-                            annotation_file_path = os.path.join(root, annotation_file_name)
-                            annotation = json.load(open(annotation_file_path))
-                            image_file_name = annotation["imagePath"]
-                            image_file_path = os.path.join(root, image_file_name)
-                            print(image_file_path)
-                            shutil.copyfile(image_file_path, os.path.join(input, image_file_name))
-                            shutil.copyfile(annotation_file_path, os.path.join(input, annotation_file_name))
+                if file.endswith(".json"):
+                    annotation_path = os.path.join(root, file)
+                    annotation = json.load(open(annotation_path))
+                    index = 0
+                    while index < len(annotation["shapes"]):
+                        if "background" in annotation["shapes"][index]["label"]:
+                            del annotation["shapes"][index]
+                            index = 0
+                        else: index += 1
+                    annotation_str = json.dumps(annotation, indent = 2)
+                    with open(annotation_path, 'w') as annotation_file:
+                        annotation_file.write(annotation_str)
+                    print("Removed annotation class from: ", file)
