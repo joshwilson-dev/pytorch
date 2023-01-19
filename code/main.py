@@ -17,6 +17,7 @@ from torchvision.models.detection import roi_heads
 import custom_roi_heads
 import custom_boxes
 from torchvision.ops import boxes as box_ops
+import time
 
 # redefining roi_heads to return scores for all classes
 # and filter the classes based on a supplied filter
@@ -87,7 +88,7 @@ def get_region(exif_dict):
         print("Couldn't get GPS")
         return
     try:
-        shape_path = "world_continents\World_Continents.shp"
+        shape_path = ".\code\world_continents\World_Continents.shp"
         shp = shapefile.Reader(shape_path)
         all_shapes = shp.shapes()
         all_records = shp.records()
@@ -102,70 +103,73 @@ def get_region(exif_dict):
         print("Couldn't get continent")
     return region
 
-def create_detection_model(index_to_class, model_path, device, kwargs, regional_filter):
+def create_detection_model(index_to_class, model_path, device, kwargs, target_gsd):
     num_classes = len(index_to_class) + 1
     backbone = resnet_fpn_backbone(backbone_name = "resnet101", weights = "DEFAULT")
     box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
-    anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
+    min_bird_size = 25
+    max_bird_size = 125
+    step_size = int(((max_bird_size - min_bird_size)/4))
+    anchor_sizes = list(range(min_bird_size, max_bird_size + step_size, step_size))
+    anchor_sizes = tuple((size / (target_gsd * 100),) for size in anchor_sizes)
+    # anchor_sizes = ((0.25,), (0.5,), (0.75,), (1.0,), (1.25,))
     aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
     rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
     kwargs["rpn_anchor_generator"] = rpn_anchor_generator
     model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
-    model.roi_heads.filter = regional_filter.to(device)
     model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict.pth"), map_location=device))
     model.eval()
     model = model.to(device)
     return model
 
-def prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height, gsd):
-    original_image = PIL.Image.open(image_path).convert('RGB')
-    scale = 0.0025/gsd
-    width, height = original_image.size
+def update_detection_model(model, regional_filter, device):
+    model.roi_heads.filter = regional_filter.to(device)
+    return model
+
+def prepare_image_for_detection(image_path, overlap, patch_width, patch_height, gsd, target_gsd):
+    image = PIL.Image.open(image_path).convert('RGB')
+    scale = target_gsd/gsd
+    width, height = image.size
     width = int(width / scale)
     height = int(height / scale)
-    original_image = original_image.resize((width, height)) 
+    image = image.resize((width, height)) 
     n_crops_width = math.ceil((width - overlap) / (patch_width - overlap))
     n_crops_height = math.ceil((height - overlap) / (patch_height - overlap))
     padded_width = n_crops_width * (patch_width - overlap) + overlap
     padded_height = n_crops_height * (patch_height - overlap) + overlap
     pad_width = (padded_width - width) / 2
     pad_height = (padded_height - height) / 2
-    left = (padded_width/2) - (width/2)
-    top = (padded_height/2) - (height/2)
-    image = PIL.Image.new(original_image.mode, (padded_width, padded_height), "black")
-    image.paste(original_image, (int(left), int(top)))
-    patches = []
+    batch = []
     for height_index in range(n_crops_height):
         for width_index in range(n_crops_width):
-            left = width_index * (patch_width - overlap)
+            left = width_index * (patch_width - overlap) - pad_width
             right = left + patch_width
-            top = height_index * (patch_height - overlap)
+            top = height_index * (patch_height - overlap) - pad_height
             bottom = top + patch_height
             patch = image.crop((left, top, right, bottom))
-            patches.append(patch)
-    batch = torch.empty(0, 3, patch_height, patch_width).to(device)
-    for patch in patches:
-        patch = torchvision.transforms.PILToTensor()(patch)
-        patch = torchvision.transforms.ConvertImageDtype(torch.float)(patch)
-        patch = patch.unsqueeze(0)
-        patch = patch.to(device)
-        batch = torch.cat((batch, patch), 0)
+            patch = torchvision.transforms.PILToTensor()(patch)
+            patch = torchvision.transforms.ConvertImageDtype(torch.float)(patch)
+            patch = patch.unsqueeze(0)
+            batch.append(patch)
+    dim = torch.Tensor(0, 3, patch_height, patch_width)
+    batch = torch.cat(batch, out=dim)
     return batch, pad_width, pad_height, n_crops_height, n_crops_width, scale
 
-def detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd):
-    print("Patching...")
-    batch, pad_width, pad_height, n_crops_height, n_crops_width, scale = prepare_image_for_detection(image_path, device, overlap, patch_width, patch_height, gsd)
-    max_batch_size = 10
+def detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd):
+    print("\tPatching...")
+    batch, pad_width, pad_height, n_crops_height, n_crops_width, scale = prepare_image_for_detection(image_path, overlap, patch_width, patch_height, gsd, target_gsd)
+    max_batch_size = 15
     batch_length = batch.size()[0]
     sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
     sub_batch_lengths.append(batch_length % max_batch_size)
     sub_batches = torch.split(batch, sub_batch_lengths)
     predictions = []
-    print("Detecting...")
+    print("\tDetecting...")
     with torch.no_grad():
         for sub_batch in sub_batches:
-            prediction = model(sub_batch)
-            predictions.extend(prediction)
+            if len(sub_batch) > 0:
+                prediction = model(sub_batch.to(device))
+                predictions.extend(prediction)
     boxes = torch.empty(0, 4)
     scores = torch.empty(0)
     class_scores = torch.empty(0, len(index_to_class))
@@ -214,7 +218,7 @@ def detect_birds(kwargs, image_path, model, device, index_to_class, overlap, pat
     return boxes, class_scores
 
 def create_annotation(boxes, scores, image_name, width, height, index_to_class):
-    print("Creating annotation...")
+    print("\tCreating annotation...")
     points = []
     species_labels = []
     species_scores = []
@@ -231,7 +235,7 @@ def create_annotation(boxes, scores, image_name, width, height, index_to_class):
         bird_scores.append(bird_score)
         species_scores.append(species_score)
     label_name = os.path.splitext(image_name)[0] + '.json'
-    label_path = os.path.join("../images", label_name)
+    label_path = os.path.join("./images", label_name)
     shapes = []
     for i in range(0, len(species_labels)):
         shapes.append({
@@ -254,8 +258,8 @@ def create_annotation(boxes, scores, image_name, width, height, index_to_class):
     return
 
 def create_csv(boxes, scores, image_name, header, index_to_class):
-    print("Updating csv...")
-    csv_path = "../images/results.csv"
+    print("\tUpdating csv...")
+    csv_path = "./images/results.csv"
     with open(csv_path, 'a+', newline='') as csvfile:
         fieldnames = ["image_name", "box", "bird"] + list(index_to_class.values())
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -278,79 +282,74 @@ def main():
         "L1D-20c": [13.2, 8.8]
         }
 
-    # walk through image files and store in dataframe
-    images = pd.DataFrame(columns = ["image_path", "gsd", "region"])
     # remove old results file
-    if os.path.exists("../images/results.csv"):
-        os.remove("../images/results.csv")
-    for file in os.listdir("../images"):
+    if os.path.exists("./images/results.csv"):
+        os.remove("./images/results.csv")
+    
+    # define constants
+    overlap = 300
+    patch_height = 800
+    patch_width = 800
+    reject = 10
+    target_gsd = 0.005
+    header = False
+
+    # create detection model
+    device = torch.device("cuda")
+    model_path = os.path.join("./models/bird-detector")
+    kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
+    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
+    birds_by_region = json.load(open(os.path.join(model_path, "birds_by_region.json")))
+    model = create_detection_model(index_to_class, model_path, device, kwargs, target_gsd)
+
+    for file in os.listdir("./images"):
         if file.lower().endswith((".jpg", ".jpeg")):
-            print("Adding record for: ", file)
+            print("Annotating: ", file)
             # get exif data and determine region
-            image_path = os.path.join("../images", file)
+            image_path = os.path.join("./images", file)
             image = PIL.Image.open(image_path)
             image_width, image_height = image.size
             # load image exif data
             exif_dict = piexif.load(image.info['exif'])
             # try calculating gsd
-            print("Trying to determine gsd from image metadata")
+            print("\tTrying to determine gsd from image metadata")
             try:
                 height = get_xmp(image_path)
                 gsd = get_gsd(exif_dict, sensor_sizes, image_width, image_height, height)
-                print("GSD: ", gsd)
+                print("\tGSD: ", gsd)
             except:
-                gsd = 0.005
-                print("Couldn't determine gsd, assuming 0.0025 meters/pixel")
+                gsd = target_gsd
+                print("\tCouldn't determine gsd, assuming {} meters/pixel".format(target_gsd))
             # try determining region from image metadata
-            print("Trying to determine region from image metadata")
+            print("\tTrying to determine region from image metadata")
             try:
                 region = get_region(exif_dict)
-                print("Region: ", region)
+                print("\tRegion: ", region)
             except:
-                region = "Global"
+                region = "Oceania"
                 print("Couldn't determine region, so including all species")
-            # convert dict of lists to dataframe and concat
-            images = pd.concat([images, pd.DataFrame({"image_path": [image_path], "gsd": [gsd], "region": [region]})])
-    # sort by gsd, then by region
-    images = images.sort_values(['gsd', 'region']).reset_index()
-    
-    # define constants
-    overlap = 150
-    patch_height = 800
-    patch_width = 800
-    reject = 25
-    header = False
-
-    # create detection model
-    device = torch.device("cuda")
-    model_path = os.path.join("../models/bird-detector")
-    kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
-    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
-    birds_by_region = json.load(open(os.path.join(model_path, "birds_by_region.json")))
-    regional_filter = torch.zeros(len(index_to_class) + 1)
-    regional_filter[0] = 1
-    for i in range(1, len(index_to_class) + 1):
-        species = ' '.join(index_to_class[str(i)].split("_")[-2:])
-        if species in birds_by_region[region]:
-            regional_filter[i] = 1
-    model = create_detection_model(index_to_class, model_path, device, kwargs, regional_filter)
-
-    for _, row in images.iterrows():
-        gsd = row["gsd"]
-        image_path = row["image_path"]
-        image_name = os.path.basename(row["image_path"])
-        image = PIL.Image.open(image_path)
-        image_width, image_height = image.size
-        print("Annotating: ", image_name)
-        # detect birds
-        boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd)
-        # create label file
-        create_annotation(boxes, scores, image_name, image_width, image_height, index_to_class)
-        # create dictionary of results
-        if len(boxes) > 0:
-            create_csv(boxes, scores, image_name, header, index_to_class)
-        header = True
-    print("Done!")
+            # if gsd too large skip image
+            if gsd > 0.0075:
+                print("GSD too large")
+                continue
+            # update model with new regional filter
+            regional_filter = torch.zeros(len(index_to_class) + 1)
+            regional_filter[0] = 1
+            for i in range(1, len(index_to_class) + 1):
+                species = ' '.join(index_to_class[str(i)].split("_")[-2:])
+                if species in birds_by_region[region]:
+                    regional_filter[i] = 1
+            # update detection model regional filter
+            model = update_detection_model(model, regional_filter, device)
+            # detect birds
+            boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
+            # create label file
+            create_annotation(boxes, scores, file, image_width, image_height, index_to_class)
+            # create dictionary of results
+            if len(boxes) > 0:
+                create_csv(boxes, scores, file, header, index_to_class)
+            header = True
+    print("\tDone!")
 
 if __name__ == "__main__":
     main()

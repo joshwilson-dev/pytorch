@@ -217,12 +217,6 @@ def main(args):
     
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
     dataset_test, _ = get_dataset(args.dataset, "test", get_transform(False, args), args.data_path, args.numclasses)
-    
-    # dataset_test, _ = get_dataset(args.dataset, "train", get_transform(False, args), args.data_path, args.numclasses)
-    # train_size = int(0.75 * len(dataset))
-    # test_size = len(dataset) - train_size
-    # dataset, _ = torch.utils.data.random_split(dataset, [train_size, test_size])
-    # _, dataset_test = torch.utils.data.random_split(dataset_test, [train_size, test_size])
 
     print("Creating data loaders")
     if args.distributed:
@@ -256,7 +250,13 @@ def main(args):
     print("Creating model")
 
     if args.custommodel == 1:
-        anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
+        target_gsd = 0.005
+        min_bird_size = 25
+        max_bird_size = 125
+        step_size = int(((max_bird_size - min_bird_size)/4))
+        anchor_sizes = list(range(min_bird_size, max_bird_size + step_size, step_size))
+        anchor_sizes = tuple((size / (target_gsd * 100),) for size in anchor_sizes)
+        # anchor_sizes = ((50,), (100,), (150,), (200,), (250,))
         aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
         rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
         kwargs = {
@@ -338,7 +338,7 @@ def main(args):
     writer = SummaryWriter(log_dir = args.output_dir)
     epochs_without_improvement = 0
     lr_steps = 0
-    best_mAP = 0
+    best_mARP = 0
     # Josh Wilson
     print("Start training")
     start_time = time.time()
@@ -360,18 +360,22 @@ def main(args):
         # Josh Wilson
         results = evaluate(model, data_loader_test, device=device)
         mAP = results.coco_eval["bbox"].stats[0]
+        mAR = results.coco_eval["bbox"].stats[8]
+        mARP = (mAP + mAR) / 2
         writer.add_scalar("mAP", mAP, epoch)
+        writer.add_scalar("mAR", mAR, epoch)
+        writer.add_scalar("mARP", mARP, epoch)
         utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
         utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
             
-        if mAP > best_mAP:
+        if mARP > best_mARP:
             print("The model improved this epoch")
             # save best model and state dict
             print("Updating best model & results")
             utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
             utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
             save_eval(results)
-            best_mAP = mAP
+            best_mARP = mARP
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1

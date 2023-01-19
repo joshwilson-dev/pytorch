@@ -12,6 +12,15 @@ class DetectionPresetTrain:
                     T.ConvertImageDtype(torch.float),
                 ]
             )
+        elif data_augmentation == "custom":
+            self.transforms = T.Compose(
+                [
+                    T.RandomHorizontalFlip(p=hflip_prob),
+                    T.RandomPhotometricDistort(),
+                    T.PILToTensor(),
+                    T.ConvertImageDtype(torch.float),
+                ]
+            )    
         elif data_augmentation == "lsj":
             self.transforms = T.Compose(
                 [

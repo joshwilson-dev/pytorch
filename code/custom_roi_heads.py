@@ -23,7 +23,7 @@ def postprocess_detections(
     class_logits_filtered = class_logits[:, filter_index]
     src = F.softmax(class_logits_filtered, -1)
     index = filter_index.repeat(len(class_logits), 1)
-    pred_scores = torch.zeros(len(class_logits), len(self.filter)).to(torch.device("cuda")).scatter_(1, index, src)
+    pred_scores = torch.zeros(len(class_logits), len(self.filter)).to(device).scatter_(1, index, src)
 
     pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
     pred_scores_list = pred_scores.split(boxes_per_image, 0)
@@ -46,7 +46,7 @@ def postprocess_detections(
 
         # batch everything, by making every class prediction be a separate instance
         boxes = boxes.reshape(-1, 4)
-        class_scores = scores.repeat_interleave(5, dim = 0)
+        class_scores = scores.repeat_interleave(num_classes - 1, dim = 0)
         scores = scores.reshape(-1)
         labels = labels.reshape(-1)
 
