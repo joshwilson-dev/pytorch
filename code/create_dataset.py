@@ -193,14 +193,13 @@ def save_dataset(train, test, shadows):
                     # if its not a background
                     if instance["instance_class"] != "null":
                         # if instance is not artificial we need to scale the mask
-                        instance_mask = instance["instance_mask"]
-                        if instance["instance_id"] != "artificial":
-                            instance_mask = [[point[0] * scale, point[1] * scale] for point in instance_mask]
+                        if instance["instance_id"] == "artificial": scale = 1
+                        instance_mask = [[int(point[0] * scale), int(point[1] * scale)] for point in instance["instance_mask"]]
                         # generate the instance box
-                        xmin = int(min(instance_mask, key=lambda x: x[0])[0])
-                        xmax = int(max(instance_mask, key=lambda x: x[0])[0])
-                        ymin = int(min(instance_mask, key=lambda x: x[1])[1])
-                        ymax = int(max(instance_mask, key=lambda x: x[1])[1])
+                        xmin = min(instance_mask, key=lambda x: x[0])[0]
+                        xmax = max(instance_mask, key=lambda x: x[0])[0]
+                        ymin = min(instance_mask, key=lambda x: x[1])[1]
+                        ymax = max(instance_mask, key=lambda x: x[1])[1]
                         instance_box = [xmin, ymin, xmax - xmin, ymax - ymin]
                         area = instance_box[2] * instance_box[3]
                         # blackout instances with low overlap
@@ -236,7 +235,7 @@ def save_dataset(train, test, shadows):
                             "iscrowd": 0,
                             "image_id": coco_image_id,
                             "bbox": instance_box,
-                            "segmentation": instance_mask,
+                            "segmentation":  [[item for sublist in instance_mask for item in sublist]],
                             "category_id": category_id,
                             "id": coco_instance_id,
                             "area": area}

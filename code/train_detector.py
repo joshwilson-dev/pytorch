@@ -260,10 +260,11 @@ def main(args):
         aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
         rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
         kwargs = {
-            # "box_fg_iou_thresh": 0.7,
-            # "box_bg_iou_thresh": 0.3,
+            "box_fg_iou_thresh": 0.7,
+            "box_bg_iou_thresh": 0.3,
+            # "rpn_pre_nms_top_n_train": 500,
+            "rpn_post_nms_top_n_train": 100,
             "rpn_anchor_generator": rpn_anchor_generator}
-            # "box_positive_fraction": args.box_positive_fraction}
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
         model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone, **kwargs)

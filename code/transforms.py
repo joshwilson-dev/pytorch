@@ -45,6 +45,32 @@ class RandomHorizontalFlip(T.RandomHorizontalFlip):
                     target["keypoints"] = keypoints
         return image, target
 
+class RandomVerticalFlip(T.RandomVerticalFlip):
+    def forward(
+        self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
+    ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
+        if torch.rand(1) < self.p:
+            image = F.vflip(image)
+            if target is not None:
+                _, height, _ = F.get_dimensions(image)
+                target["boxes"][:, [1, 3]] = height - target["boxes"][:, [3, 1]]
+                if "masks" in target:
+                    target["masks"] = target["masks"].flip(1)
+                if "keypoints" in target:
+                    keypoints = target["keypoints"]
+                    keypoints = _flip_coco_person_keypoints(keypoints, height)
+                    target["keypoints"] = keypoints
+        return image, target
+
+# class RandomRotation(T.RandomRotation):
+#     def forward(
+#         self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
+#     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
+#         angle = torch.tensor([0, 90, 180, 270])[torch.randint(4, (1,))]
+#         image = F.rotate(image, angle)
+#         if target is not None:
+#             #rotate the targets, hard to do for boxes...
+#         return image, target
 
 class PILToTensor(nn.Module):
     def forward(
