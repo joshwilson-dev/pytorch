@@ -327,7 +327,7 @@ def main():
                 print("\tRegion: ", region)
             except:
                 region = "Oceania"
-                print("Couldn't determine region, so including all species")
+                print("\tCouldn't determine region, so including all species")
             # if gsd too large skip image
             if gsd > 0.0075:
                 print("GSD too large")
@@ -344,7 +344,8 @@ def main():
             # detect birds
             boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
             # create label file
-            create_annotation(boxes, scores, file, image_width, image_height, index_to_class)
+            if len(boxes) > 0:
+                create_annotation(boxes, scores, file, image_width, image_height, index_to_class)
             # create dictionary of results
             if len(boxes) > 0:
                 create_csv(boxes, scores, file, header, index_to_class)

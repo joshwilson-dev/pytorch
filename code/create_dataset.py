@@ -22,7 +22,7 @@ import json
 import piexif
 import pandas as pd
 import random
-from PIL import Image, ImageDraw, ImageEnhance
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 import numpy as np
 import hashlib
 import shutil
@@ -128,6 +128,9 @@ def transforms(instance, mask, gsd, min_gsd, max_gsd, random_state):
     size = (instance.size)
     instance = instance.resize(scale_size)
     instance = instance.resize(size)
+    # blur
+    # blur = random.uniform(0, min_transform)
+    # instance = instance.filter(ImageFilter.GaussianBlur(blur))
     # colour
     colour = random.uniform(min_transform, max_transform)
     instance = ImageEnhance.Color(instance)
@@ -142,10 +145,27 @@ def transforms(instance, mask, gsd, min_gsd, max_gsd, random_state):
     instance = instance.enhance(brightness)
     # rotate
     centre = [max(instance.size)/2] * 2
-    rotation = random.sample([0], 1)[0]
-    instance = instance.rotate(rotation)
-    mask = [rotate_point(point, centre, -rotation) for point in mask]
+    rotation = random.sample([0, 90, 180, 270], 1)[0]
+    if rotation != 0:
+        instance = instance.rotate(rotation)
+        mask = [rotate_point(point, centre, -rotation) for point in mask]
+    # poly crop
+    poly_prob = random.uniform(0, 1)
+    if poly_prob > 0.7:
+        instance = crop_polygon(instance)
     return instance, mask
+
+def crop_polygon(instance):
+    width, height = instance.size
+    instance_area = width * height
+    draw = ImageDraw.Draw(instance)
+    for _ in range(3):
+        overlap = 1
+        while overlap > 0.05 or overlap < 0.01:
+            points = tuple((random.randint(0, width) , random.randint(0, height)) for _ in range(3))
+            overlap = Polygon(points).area/instance_area
+        draw.polygon(points, fill=(0, 0, 0, 0))
+    return instance
 
 def save_dataset(train, test, shadows):
     # to share coco categories accross train and test
@@ -248,20 +268,26 @@ def save_dataset(train, test, shadows):
                         height_offset = instance_size/2 - instance_box[3]/2
                         location = (int(instance_box[0] - width_offset), int(instance_box[1] - height_offset))
                         # paste a shadow under the instance if its not background
-                        try:
-                            species = instance["instance_class"].split('_')[0].replace(" ", "_").lower() + "_shadow"
-                            shadow = (
-                                shadows
-                                .query("instance_class.isin({0})".format(species), engine="python")
-                                .sample(n = 1, random_state = index))
-                        except Exception as e:
-                            # print("no shadows match species")
-                            shadow = shadows.sample(n = 1, random_state = index)
-                        shadow_object = shadow["instance_object"].item()
                         random.seed(index)
                         shadow_prob = random.randint(0, 100)
-                        if shadow_prob > 50:
+                        if shadow_prob > 30:
+                            try:
+                                species = instance["instance_class"].split('_')[0].replace(" ", "_").lower() + "_shadow"
+                                shadow = (
+                                    shadows
+                                    .query("instance_class.isin({0})".format(species), engine="python")
+                                    .sample(n = 2, random_state = index)
+                                    .reset_index(drop = True))
+                            except Exception as e:
+                                # print("no shadows match species")
+                                shadow = (
+                                    shadows
+                                    .sample(n = 2, random_state = index)
+                                    .reset_index(drop = True))
+                            shadow_object = shadow.iloc[0]["instance_object"]
                             patch_object.paste(shadow_object, (instance_box[0], instance_box[1]), shadow_object)
+                            shadow_object = shadow.iloc[1]["instance_object"]
+                            patch_object.paste(shadow_object, (random.randint(0, size[0] - max(shadow_object.size)), random.randint(0, size[1] - max(shadow_object.size))), shadow_object)
                         patch_object.paste(instance_object, location, instance_object)
                 # determine name of patch
                 patch_name = hashlib.md5(patch_object.tobytes()).hexdigest() + ".jpg"
