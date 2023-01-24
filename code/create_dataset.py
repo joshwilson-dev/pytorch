@@ -92,7 +92,7 @@ def blackout_instance(image, box):
     image.paste(black_box, topleft)
     return image
 
-def balance_instances(df, threshold):
+def balance_instances(df, ratio):
     # Create the model
     model = cp_model.CpModel()
     # create array containing row selection flags. 
@@ -101,7 +101,7 @@ def balance_instances(df, threshold):
     # Number of instances for each class should be less than class_threshold
     for column in df.columns:
         if "aves" in column:
-            model.Add(df[column].dot(row_selection) <= threshold)
+            model.Add(df[column].dot(row_selection) <= math.floor(ratio * df[column].sum()))
     # Maximise the number of imaes
     model.Maximize(pd.Series([1]*len(df)).dot(row_selection))
     # Solve
@@ -118,8 +118,23 @@ def rotate_point(point, centre, deg):
     return rotated_point
 
 def transforms(instance, mask, gsd, min_gsd, max_gsd, random_state):
-    # shadow
-    
+    # fake shadow
+    shadow = instance.copy()
+    width, height = shadow.size
+    shadow_data = []
+    for item in shadow.getdata():
+        if item[3] == 255:
+            shadow_data.append((0, 0, 0, int(255/2)))
+        else:
+            shadow_data.append(item)
+    shadow.putdata(shadow_data)
+    x_offset = random.randint(-10, 10)
+    y_offset = random.randint(-10, 10)
+    shadow = shadow.crop((min(x_offset, 0), min(y_offset, 0), max(width, width + x_offset), max(height, height + x_offset)))
+    shadow.paste(instance, (max(x_offset, 0), max(y_offset, 0)), instance)
+    instance = shadow.copy()
+    mask = [[point[0] + max(x_offset, 0), point[1] + max(y_offset, 0)] for point in mask]
+
     # min_transform = 0.75
     # max_transform = 1.25
     # random.seed(random_state)
@@ -342,16 +357,14 @@ if len(file_path_variable) > 0:
         dataset_keys = [
             "image_path", "image_gsd", "patch_points",
             "instance_object", "instance_class", "instance_crop",
-            "instance_id", "instance_mask", "instance_overlap"]
+            "instance_mask", "instance_overlap"]
         data = {k:[] for k in dataset_keys}
         # variables
         target_gsd = 0.005
         max_gsd = 0.0075
         min_gsd = 0.0025
         overlap = 0.9
-        min_instances_class = 100
         train_test_ratio = 0.25
-        test_instances_size = 25
         target_patchsize = 800
         instances_per_background = 6
         paths = ["dataset/train", "dataset/test", "dataset/annotations"]
@@ -425,7 +438,7 @@ if len(file_path_variable) > 0:
                                 if shape["shape_type"] == "rectangle":
                                     sys.exit("There is a rectange label in your data: {}".format(file))
                                 # find bounding box corners
-                                instance_mask = [[x - left, y - top] for x, y in shape["points"]]
+                                instance_mask = ((point[0], point[1]) for point in shape["points"])
 
                                 # create instance polygon
                                 instance_poly = Polygon(shape["points"])
@@ -457,7 +470,6 @@ if len(file_path_variable) > 0:
                                 data["patch_points"].append(patch_points)
                                 data["instance_object"].append(instance_object)
                                 data["instance_class"].append(instance_class)
-                                data["instance_id"].append(instance_id)
                                 data["instance_crop"].append(instance_crop)
                                 data["instance_mask"].append(instance_mask)
                                 data["instance_overlap"].append(instance_overlap)
@@ -469,41 +481,24 @@ if len(file_path_variable) > 0:
                                 data["image_gsd"].append(image_gsd)
                                 data["patch_points"].append(patch_points)
                                 data["instance_object"].append("null")
-                                data["instance_class"].append("null")
-                                data["instance_id"].append("null")
+                                data["instance_class"].append("background")
                                 data["instance_crop"].append("null")
                                 data["instance_mask"].append("null")
                                 data["instance_overlap"].append(1.0)
         # convert dictionary to dataframe
-        data = pd.DataFrame(data=data)
-        print(data["instance_class"])
+        data = (
+            pd.DataFrame(data=data)
+            .query("~instance_class.str.contains('shadow')", engine="python"))
         # polygon abundance
         class_count = (
             data
-            .drop_duplicates(["image_path", "instance_id"])
-            .query("instance_class != 'null'")
+            .drop_duplicates(["image_path", "instance_mask"])
             .instance_class
             .value_counts())
         print("\tClass Count:\n{}\n".format(class_count))
-        # grab shadows
-        shadows = (
-            data
-            .query("instance_class.str.contains('shadow')", engine="python")
-            .query("instance_overlap >= {0}".format(overlap))
-            .reset_index(drop = True))
-        # drop shadows from data
-        data = (
-            pd.merge(data, shadows[["image_path", "patch_points"]], indicator=True, how='outer')
-            .query('_merge=="left_only"')
-            .drop('_merge', axis=1)
-            .reset_index(drop = True))
-        # drop classes without enough instances
-        included_classes = list(class_count.index[class_count.gt(min_instances_class)])
-        print("Included classes: ", included_classes)
         # count class instances per patch
         instances_per_patch = (
             data
-            .query("instance_class.isin({0})".format(included_classes), engine="python")
             .query("instance_overlap >= {0}".format(overlap))
             .groupby(['image_path', 'patch_points', 'instance_class'])
             .size()
@@ -515,7 +510,7 @@ if len(file_path_variable) > 0:
                 fill_value=0)
             .reset_index())
         # generate test dataset
-        test_instances = balance_instances(instances_per_patch, test_instances_size)[["image_path", "patch_points"]]
+        test_instances = balance_instances(instances_per_patch, train_test_ratio)[["image_path", "patch_points"]]
         # convert test back into patch data
         test_instances = (
             pd.merge(data, test_instances, indicator=True, how='outer')
@@ -525,7 +520,7 @@ if len(file_path_variable) > 0:
         # determin the number of samples to take from each image
         patches_per_image = (
             data
-            .query("instance_class == 'null'")
+            .query("instance_class == 'background'")
             .groupby("image_path")
             .size())
         # assign % of background patches to test set for each image
