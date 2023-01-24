@@ -118,41 +118,43 @@ def rotate_point(point, centre, deg):
     return rotated_point
 
 def transforms(instance, mask, gsd, min_gsd, max_gsd, random_state):
-    min_transform = 0.75
-    max_transform = 1.25
-    random.seed(random_state)
+    # shadow
+    
+    # min_transform = 0.75
+    # max_transform = 1.25
+    # random.seed(random_state)
     # quality
-    scale_gsd = random.uniform(min_gsd, max_gsd)
-    scale = gsd / scale_gsd
-    scale_size = (int(dim * scale) for dim in instance.size)
-    size = (instance.size)
-    instance = instance.resize(scale_size)
-    instance = instance.resize(size)
-    # blur
+    # scale_gsd = random.uniform(min_gsd, max_gsd)
+    # scale = gsd / scale_gsd
+    # scale_size = (int(dim * scale) for dim in instance.size)
+    # size = (instance.size)
+    # instance = instance.resize(scale_size)
+    # instance = instance.resize(size)
+    # # blur
     # blur = random.uniform(0, min_transform)
     # instance = instance.filter(ImageFilter.GaussianBlur(blur))
-    # colour
-    colour = random.uniform(min_transform, max_transform)
-    instance = ImageEnhance.Color(instance)
-    instance = instance.enhance(colour)
-    # contrast
-    contrast = random.uniform(min_transform, max_transform)
-    instance = ImageEnhance.Contrast(instance)
-    instance = instance.enhance(contrast)
-    # brightness
-    brightness = random.uniform(min_transform, max_transform)
-    instance = ImageEnhance.Brightness(instance)
-    instance = instance.enhance(brightness)
-    # rotate
-    centre = [max(instance.size)/2] * 2
-    rotation = random.sample([0, 90, 180, 270], 1)[0]
-    if rotation != 0:
-        instance = instance.rotate(rotation)
-        mask = [rotate_point(point, centre, -rotation) for point in mask]
-    # poly crop
-    poly_prob = random.uniform(0, 1)
-    if poly_prob > 0.7:
-        instance = crop_polygon(instance)
+    # # colour
+    # colour = random.uniform(min_transform, max_transform)
+    # instance = ImageEnhance.Color(instance)
+    # instance = instance.enhance(colour)
+    # # contrast
+    # contrast = random.uniform(min_transform, max_transform)
+    # instance = ImageEnhance.Contrast(instance)
+    # instance = instance.enhance(contrast)
+    # # brightness
+    # brightness = random.uniform(min_transform, max_transform)
+    # instance = ImageEnhance.Brightness(instance)
+    # instance = instance.enhance(brightness)
+    # # rotate
+    # centre = [max(instance.size)/2] * 2
+    # rotation = random.sample([0, 90, 180, 270], 1)[0]
+    # if rotation != 0:
+    #     instance = instance.rotate(rotation)
+    #     mask = [rotate_point(point, centre, -rotation) for point in mask]
+    # # poly crop
+    # poly_prob = random.uniform(0, 1)
+    # if poly_prob > 0.7:
+    #     instance = crop_polygon(instance)
     return instance, mask
 
 def crop_polygon(instance):
