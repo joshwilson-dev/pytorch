@@ -363,7 +363,7 @@ if len(file_path_variable) > 0:
         target_gsd = 0.005
         max_gsd = 0.0075
         min_gsd = 0.0025
-        overlap = 0.9
+        min_overlap = 0.9
         train_test_ratio = 0.25
         target_patchsize = 800
         instances_per_background = 6
@@ -499,7 +499,9 @@ if len(file_path_variable) > 0:
         # count class instances per patch
         instances_per_patch = (
             data
-            .query("instance_overlap >= {0}".format(overlap))
+            .query("~instance_class.str.contains('unknown')", engine="python")
+            .query("instance_class != 'background'")
+            .query("instance_overlap >= {0}".format(min_overlap))
             .groupby(['image_path', 'patch_points', 'instance_class'])
             .size()
             .reset_index(name='counts')
@@ -517,6 +519,14 @@ if len(file_path_variable) > 0:
             .query('_merge=="both"')
             .drop('_merge', axis=1)
             .reset_index(drop = True))
+        # create train_masks
+        train_instances = (
+            data
+            .query("~instance_class.str.contains('unknown')", engine="python")
+            .query("instance_class != 'background'")
+            .query("instance_overlap >= {0}".format(min_overlap))
+            .drop_duplicates(["image_path", "instance_mask"])
+            .reset_index(drop = True))
         # determin the number of samples to take from each image
         patches_per_image = (
             data
@@ -526,10 +536,10 @@ if len(file_path_variable) > 0:
         # assign % of background patches to test set for each image
         test_backgrounds_per_image = {}
         for i in range(len(patches_per_image)):
-            test_backgrounds_per_image[patches_per_image.index[i]] = int(patches_per_image[i] * train_test_ratio)
+            test_backgrounds_per_image[patches_per_image.index[i]] = math.floor(patches_per_image[i] * train_test_ratio)
         test_backgrounds = (
             data
-            .query("instance_class == 'null'")
+            .query("instance_class == 'background'")
             .groupby("image_path")
             .apply(lambda group: group.sample(test_backgrounds_per_image[group.name], random_state=1)))
         # join test datasets
@@ -548,13 +558,12 @@ if len(file_path_variable) > 0:
             data
             .query("instance_class == 'null'")
             .reset_index(drop = True))
-        # create train_masks
-        artificial_train_masks = (
-            data
-            .query("instance_class.isin({0})".format(included_classes), engine="python")
-            .query("instance_overlap >= {0}".format(overlap))
-            .drop_duplicates(["image_path", "instance_id"])
-            .reset_index(drop = True))
+
+
+# here need to sample 25% of all backgrounds for train and fix masks and check shadows
+
+
+
         # step through backgrounds and paste instances on
         train = pd.DataFrame(columns=dataset_keys)
         for index1 in range(len(artificial_train_backgrounds.index)):
