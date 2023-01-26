@@ -7,6 +7,7 @@ import torchvision.models.detection.mask_rcnn
 import utils
 from coco_eval import CocoEvaluator
 from coco_utils import get_coco_api_from_dataset
+import copy
 
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
@@ -81,7 +82,12 @@ def evaluate(model, data_loader, device):
 
     coco = get_coco_api_from_dataset(data_loader.dataset)
     iou_types = _get_iou_types(model)
+    supercat_coco = copy.deepcopy(coco)
+    for i in range(len(supercat_coco.anns)):
+        supercat_coco.anns[i + 1]["category_id"] = 1
+
     coco_evaluator = CocoEvaluator(coco, iou_types)
+    supercat_coco_evaluator = CocoEvaluator(supercat_coco, iou_types)
 
     for images, targets in metric_logger.log_every(data_loader, 100, header):
         images = list(img.to(device) for img in images)
@@ -90,13 +96,19 @@ def evaluate(model, data_loader, device):
             torch.cuda.synchronize()
         model_time = time.time()
         outputs = model(images)
+        supercat_outputs = copy.deepcopy(outputs)
+
+        supercat_outputs[0]["labels"] = torch.ones(len(supercat_outputs[0]["labels"]))
+        supercat_outputs[0]["scores"] = torch.tensor([sum(class_scores) for class_scores in supercat_outputs[0]["class_scores"]])
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
         model_time = time.time() - model_time
 
         res = {target["image_id"].item(): output for target, output in zip(targets, outputs)}
+        supercat_res = {target["image_id"].item(): output for target, output in zip(targets, supercat_outputs)}
         evaluator_time = time.time()
         coco_evaluator.update(res)
+        supercat_coco_evaluator.update(supercat_res)
         evaluator_time = time.time() - evaluator_time
         metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
@@ -104,9 +116,12 @@ def evaluate(model, data_loader, device):
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     coco_evaluator.synchronize_between_processes()
+    supercat_coco_evaluator.synchronize_between_processes()
 
     # accumulate predictions from all images
     coco_evaluator.accumulate()
     coco_evaluator.summarize()
+    supercat_coco_evaluator.accumulate()
+    supercat_coco_evaluator.summarize()
     torch.set_num_threads(n_threads)
-    return coco_evaluator
+    return coco_evaluator, supercat_coco_evaluator

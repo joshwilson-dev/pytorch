@@ -10,6 +10,6 @@ python code/train_detector.py --data-path datasets/bird-detector-artificial/data
 
 
 test
-python code/train_detector.py --data-path datasets/bird-mask-trial/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 7 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --test-only --resume models/trial/model_best_checkpoint.pth
+python code/train_detector.py --data-path datasets/bird-detector-best/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 18 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --test-only --resume models/bird-detector-best-copy/model_best_checkpoint.pth
 
 python code/train_detector.py --data-path datasets/bird-mask/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 7 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --test-only --resume models/trial/model_best_checkpoint.pth

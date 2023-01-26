@@ -18,12 +18,15 @@ def postprocess_detections(
     boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
     pred_boxes = self.box_coder.decode(box_regression, proposals)
 
-    # filter the logits, apply softmax, restore filtered scores as 0
-    filter_index = self.filter.nonzero().squeeze()
-    class_logits_filtered = class_logits[:, filter_index]
-    src = F.softmax(class_logits_filtered, -1)
-    index = filter_index.repeat(len(class_logits), 1)
-    pred_scores = torch.zeros(len(class_logits), len(self.filter)).to(device).scatter_(1, index, src)
+    if hasattr(self, 'class_filter'):
+        # filter the logits, apply softmax, restore filtered scores as 0
+        filter_index = self.class_filter.nonzero().squeeze()
+        class_logits_filtered = class_logits[:, filter_index]
+        src = F.softmax(class_logits_filtered, -1)
+        index = filter_index.repeat(len(class_logits), 1)
+        pred_scores = torch.zeros(len(class_logits), len(self.filter)).to(device).scatter_(1, index, src)
+    else:
+        pred_scores = F.softmax(class_logits, -1)
 
     pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
     pred_scores_list = pred_scores.split(boxes_per_image, 0)

@@ -12,6 +12,22 @@ Also, if you train Keypoint R-CNN, the default hyperparameters are
 Because the number of images is smaller in the person keypoint subset of COCO,
 the number of epochs should be adapted so that we have the same number of iterations.
 """
+from torchvision.models.detection import roi_heads
+from torchvision.ops import boxes as box_ops
+import custom_roi_heads
+import custom_boxes
+
+# redefining roi_heads to return scores for all classes
+# and filter the classes based on a supplied filter
+roi_heads.RoIHeads.postprocess_detections = custom_roi_heads.postprocess_detections
+roi_heads.RoIHeads.forward = custom_roi_heads.forward
+
+# redefining boxes to do nms on all classes, not class specific
+box_ops.batched_nms = custom_boxes.batched_nms
+box_ops._batched_nms_coordinate_trick = custom_boxes._batched_nms_coordinate_trick
+
+
+
 import datetime
 import os
 import time
@@ -164,7 +180,7 @@ def get_args_parser(add_help=True):
 
     return parser
 
-def save_eval(results):
+def save_eval(results, output_file_name):
     #  catIds     - [all] K cat ids to use for evaluation
     #  iouThrs    - [.5:.05:.95] T=10 IoU thresholds for evaluation
     #  recThrs    - [0:.01:1] R=101 recall thresholds for evaluation
@@ -194,7 +210,7 @@ def save_eval(results):
                         result_dict['maxDet'].append(maxDets[maxDet_index])
                         result_dict['precision'].append(results.coco_eval["bbox"].eval["precision"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
                         result_dict['scores'].append(results.coco_eval["bbox"].eval["scores"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
-    with open(os.path.join(args.output_dir, "performance_metrics.csv"), "w", newline='') as outfile:
+    with open(os.path.join(args.output_dir, output_file_name), "w", newline='') as outfile:
         writer = csv.writer(outfile)
         writer.writerow(result_dict.keys())
         writer.writerows(zip(*result_dict.values()))
@@ -217,6 +233,7 @@ def main(args):
     
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
     dataset_test, _ = get_dataset(args.dataset, "test", get_transform(False, args), args.data_path, args.numclasses)
+    
 
     print("Creating data loaders")
     if args.distributed:
@@ -331,16 +348,16 @@ def main(args):
 
     if args.test_only:
         torch.backends.cudnn.deterministic = True
-        results = evaluate(model, data_loader_test, device=device)
-        save_eval(results)
-
-    # Josh Wilson
+        results, supercat_results = evaluate(model, data_loader_test, device=device)
+        save_eval(results, "performance_metrics.csv")
+        save_eval(supercat_results, "supercat_performance_metrics.csv")
+  
     from torch.utils.tensorboard import SummaryWriter
     writer = SummaryWriter(log_dir = args.output_dir)
     epochs_without_improvement = 0
     lr_steps = 0
     best_mARP = 0
-    # Josh Wilson
+
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
@@ -358,7 +375,7 @@ def main(args):
             if args.amp:
                 checkpoint["scaler"] = scaler.state_dict()
 
-        results = evaluate(model, data_loader_test, device=device)
+        results, supercat_results = evaluate(model, data_loader_test, device=device)
         mAP = results.coco_eval["bbox"].stats[0]
         mAR = results.coco_eval["bbox"].stats[8]
         mARP = (mAP + mAR) / 2
@@ -374,7 +391,8 @@ def main(args):
             print("Updating best model & results")
             utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
             utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
-            save_eval(results)
+            save_eval(results, "performance_metrics.csv")
+            save_eval(supercat_results, "supercat_performance_metrics.csv")
             best_mARP = mARP
             epochs_without_improvement = 0
         else:
@@ -396,7 +414,6 @@ def main(args):
             else:
                 writer.flush()
                 break
-        # Josh Wilson
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

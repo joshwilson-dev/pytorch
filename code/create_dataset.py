@@ -22,13 +22,12 @@ import json
 import piexif
 import pandas as pd
 import random
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance
 import numpy as np
 import hashlib
 import shutil
 from ortools.sat.python import cp_model
 from shapely.geometry import Polygon
-import sys
 
 #################
 #### Content ####
