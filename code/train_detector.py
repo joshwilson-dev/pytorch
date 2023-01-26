@@ -358,7 +358,6 @@ def main(args):
             if args.amp:
                 checkpoint["scaler"] = scaler.state_dict()
 
-        # Josh Wilson
         results = evaluate(model, data_loader_test, device=device)
         mAP = results.coco_eval["bbox"].stats[0]
         mAR = results.coco_eval["bbox"].stats[8]
