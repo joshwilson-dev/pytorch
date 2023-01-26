@@ -351,8 +351,8 @@ if len(file_path_variable) > 0:
         max_gsd = 0.0075
         min_gsd = 0.0025
         min_instances_class = 100
-        min_polygons_class = 100
-        max_instances_class = 500
+        min_polygons_class = 50
+        max_instances_class = 10000
         train_test_ratio = 0.25
         max_instances_class_test = max_instances_class * train_test_ratio
         max_instances_class_train = max_instances_class - max_instances_class_test
@@ -489,9 +489,7 @@ if len(file_path_variable) > 0:
                                 data["instance_shape_type"].append("null")
                                 data["instance_overlap"].append(1.0)
         # convert dictionary to dataframe
-        data = (
-            pd.DataFrame(data=data)
-            .query("~instance_class.str.contains('shadow')", engine="python"))
+        data = pd.DataFrame(data=data)
         # class abundance
         total_class_count = (
             data
