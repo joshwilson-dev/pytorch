@@ -60,7 +60,7 @@ if len(file_path_variable) > 0:
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
                 if "dataset" not in root:
-                    if "fully annotated\\mask" in root or "backgrounds" in root:
+                    if "fully annotated" in root or "backgrounds" in root:
                         if file.endswith(".json"):
                             annotation_file_name = file
                             annotation_file_path = os.path.join(root, annotation_file_name)
