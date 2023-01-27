@@ -17,7 +17,7 @@ class DetectionPresetTrain:
                 [
                     T.RandomHorizontalFlip(p=hflip_prob),
                     T.RandomVerticalFlip(p=vflip_prob),
-                    # T.RandomRotation(degrees=180),
+                    T.RandomRotation(degrees=[0, 360]),
                     T.RandomPhotometricDistort(),
                     T.PILToTensor(),
                     T.ConvertImageDtype(torch.float),
