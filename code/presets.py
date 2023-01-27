@@ -1,13 +1,6 @@
 import torch
 import transforms as T
 
-
-        # contrast: Tuple[float] = (0.5, 1.5),
-        # saturation: Tuple[float] = (0.5, 1.5),
-        # hue: Tuple[float] = (-0.05, 0.05),
-        # brightness: Tuple[float] = (0.875, 1.125),
-        # p: float = 0.5,
-
 class DetectionPresetTrain:
     def __init__(self, *, data_augmentation, hflip_prob=0.5, prob=0.5, mean=(123.0, 117.0, 104.0)):
         if data_augmentation == "hflip":
