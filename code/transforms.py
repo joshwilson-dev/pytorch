@@ -62,6 +62,7 @@ class RandomVerticalFlip(T.RandomVerticalFlip):
                     target["keypoints"] = keypoints
         return image, target
 
+from torchvision.ops import masks_to_boxes
 class RandomRotation(T.RandomRotation):
     def forward(
         self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
@@ -73,10 +74,12 @@ class RandomRotation(T.RandomRotation):
                 fill = [float(fill)] * channels
             else:
                 fill = [float(f) for f in fill]
-        angle = self.get_params(self.degrees)
+        angles = list(range(0, int(self.degrees[1]), 90))
+        angle = angles[torch.randint(len(angles), (1,))]
         image = F.rotate(image, angle, self.resample, self.expand, self.center, fill)
         if target is not None:
             target["masks"] = F.rotate(target["masks"], angle)
+            target["boxes"] = masks_to_boxes(target["masks"])
         return image, target
 
 class PILToTensor(nn.Module):
