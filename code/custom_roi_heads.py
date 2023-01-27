@@ -1,6 +1,8 @@
 import torch.nn.functional as F
 from torchvision.ops import boxes as box_ops
 import torch
+from torchvision.models.detection import roi_heads
+from torchvision.ops import boxes as box_ops
 
 # update box ops?
 
@@ -24,7 +26,7 @@ def postprocess_detections(
         class_logits_filtered = class_logits[:, filter_index]
         src = F.softmax(class_logits_filtered, -1)
         index = filter_index.repeat(len(class_logits), 1)
-        pred_scores = torch.zeros(len(class_logits), len(self.filter)).to(device).scatter_(1, index, src)
+        pred_scores = torch.zeros(len(class_logits), len(self.class_filter)).to(device).scatter_(1, index, src)
     else:
         pred_scores = F.softmax(class_logits, -1)
 
@@ -119,7 +121,7 @@ def forward(
             raise ValueError("labels cannot be None")
         if regression_targets is None:
             raise ValueError("regression_targets cannot be None")
-        loss_classifier, loss_box_reg = fastrcnn_loss(class_logits, box_regression, labels, regression_targets)
+        loss_classifier, loss_box_reg = roi_heads.fastrcnn_loss(class_logits, box_regression, labels, regression_targets)
         losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
     else:
         boxes, scores, labels, class_scores = self.postprocess_detections(class_logits, box_regression, proposals, image_shapes)

@@ -535,6 +535,7 @@ if len(file_path_variable) > 0:
             .drop('_merge', axis=1)
             .reset_index(drop = True))
         print("Test Instances:\n{}\n".format(test_instances.query("instance_overlap >= {0}".format(min_overlap)).query("instance_class.isin({0})".format(included_classes), engine="python").instance_class.value_counts()))
+        print("Test patches:\n{}\n".format(test_instances.groupby(["image_path", "patch_points"]).ngroups))
         # drop test_instances from data
         data = (
             test_merge
@@ -565,6 +566,7 @@ if len(file_path_variable) > 0:
             .drop('_merge', axis=1)
             .reset_index(drop = True))
         print("Train Instances:\n{}\n".format(train_instances.query("instance_overlap >= {0}".format(min_overlap)).query("instance_class.isin({0})".format(included_classes), engine="python").instance_class.value_counts()))
+        print("Train patches:\n{}\n".format(train_instances.groupby(["image_path", "patch_points"]).ngroups))
         # drop train instances from data
         data = data.query("instance_class == 'background'")
         # determine the number of background samples to take from each image
