@@ -6,10 +6,10 @@ mask rcnn
 python train_detector.py --data-path ../datasets/seed-detector/ --model maskrcnn_resnet50_fpn --weights-backbone ResNet50_Weights.DEFAULT --numclasses 3 --output-dir ../models/temp/ --lr 0.001 --lr-steps 30 60 90 --epochs 100 --evalepoch 30 --modelsave 30 --trainable-backbone-layers 5
 
 bird
-python code/train_detector.py --data-path datasets/bird-detector-artificial/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 18 --output-dir models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 10000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --patience 100 --data-augmentation custom
+python code/train_detector.py --data-path datasets/bird-detector/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 10 --output-dir models/temp/ --lr 0.001 --lr-steps 1 2 3 --epochs 10000 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --patience 100 --data-augmentation custom
 
 
 test
-python code/train_detector.py --data-path datasets/bird-mask-trial/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 7 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --test-only --resume models/trial/model_best_checkpoint.pth
+python code/train_detector.py --data-path datasets/bird-detector-best/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 18 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --test-only --resume models/bird-detector-best-copy/model_best_checkpoint.pth
 
 python code/train_detector.py --data-path datasets/bird-mask/dataset --model FasterRCNN --backbone resnet101 --weights-backbone ResNet101_Weights.DEFAULT --numclasses 7 --trainable-backbone-layers 5 --custommodel 1 --batch-size 5 --test-only --resume models/trial/model_best_checkpoint.pth

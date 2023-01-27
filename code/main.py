@@ -122,8 +122,8 @@ def create_detection_model(index_to_class, model_path, device, kwargs, target_gs
     model = model.to(device)
     return model
 
-def update_detection_model(model, regional_filter, device):
-    model.roi_heads.filter = regional_filter.to(device)
+def update_detection_model(model, class_filter, device):
+    model.roi_heads.class_filter = class_filter.to(device)
     return model
 
 def prepare_image_for_detection(image_path, overlap, patch_width, patch_height, gsd, target_gsd):
@@ -333,14 +333,14 @@ def main():
                 print("GSD too large")
                 continue
             # update model with new regional filter
-            regional_filter = torch.zeros(len(index_to_class) + 1)
-            regional_filter[0] = 1
+            class_filter = torch.zeros(len(index_to_class) + 1)
+            class_filter[0] = 1
             for i in range(1, len(index_to_class) + 1):
                 species = ' '.join(index_to_class[str(i)].split("_")[-2:])
                 if species in birds_by_region[region]:
-                    regional_filter[i] = 1
+                    class_filter[i] = 1
             # update detection model regional filter
-            model = update_detection_model(model, regional_filter, device)
+            model = update_detection_model(model, class_filter, device)
             # detect birds
             boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
             # create label file

@@ -57,7 +57,7 @@ if len(file_path_variable) > 0:
                     annotation = json.load(open(annotation_path))
                     index = 0
                     while index < len(annotation["shapes"]):
-                        if "background" in annotation["shapes"][index]["label"]:
+                        if "shadow" in annotation["shapes"][index]["label"]:
                             del annotation["shapes"][index]
                             index = 0
                         else: index += 1
