@@ -14,7 +14,12 @@ class DetectionPresetTrain:
         elif data_augmentation == "custom":
             self.transforms = T.Compose(
                 [
-                    T.RandomPhotometricDistort(),
+                    T.RandomPhotometricDistort(
+                        contrast = (0.5, 1.5),
+                        saturation = (0.5, 1.5),
+                        hue = (-0.05, 0.05),
+                        brightness = (0.875, 1.125),
+                        p = prob),
                     T.RandomHorizontalFlip(p=prob),
                     T.RandomVerticalFlip(p=prob),
                     T.RandomRotation(degrees=[0, 360]),

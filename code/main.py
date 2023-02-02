@@ -12,12 +12,10 @@ from shapely.geometry import shape
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 import csv
 import math
-import pandas as pd
 from torchvision.models.detection import roi_heads
 import custom_roi_heads
 import custom_boxes
 from torchvision.ops import boxes as box_ops
-import time
 
 # redefining roi_heads to return scores for all classes
 # and filter the classes based on a supplied filter
@@ -310,12 +308,13 @@ def main():
             image = PIL.Image.open(image_path)
             image_width, image_height = image.size
             # load image exif data
-            exif_dict = piexif.load(image.info['exif'])
+            # exif_dict = piexif.load(image.info['exif'])
             # try calculating gsd
             print("\tTrying to determine gsd from image metadata")
             try:
-                height = get_xmp(image_path)
-                gsd = get_gsd(exif_dict, sensor_sizes, image_width, image_height, height)
+                # height = get_xmp(image_path)
+                # gsd = get_gsd(exif_dict, sensor_sizes, image_width, image_height, height)
+                gsd = 0.0075
                 print("\tGSD: ", gsd)
             except:
                 gsd = target_gsd
@@ -323,7 +322,8 @@ def main():
             # try determining region from image metadata
             print("\tTrying to determine region from image metadata")
             try:
-                region = get_region(exif_dict)
+                region = "Oceania"
+                # region = get_region(exif_dict)
                 print("\tRegion: ", region)
             except:
                 region = "Oceania"
