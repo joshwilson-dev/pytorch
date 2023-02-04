@@ -1,21 +1,16 @@
-import torch
-import torchvision
-import PIL
 import os
 import json
 import math
-from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
-import piexif
-import shapefile
-from shapely.geometry import Point
-from shapely.geometry import shape
-from torchvision.models.detection.anchor_utils import AnchorGenerator
 import csv
-import math
+import PIL
+import torch
+import torchvision
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
+from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection import roi_heads
+from torchvision.ops import boxes as box_ops
 import custom_roi_heads
 import custom_boxes
-from torchvision.ops import boxes as box_ops
 
 # redefining roi_heads to return scores for all classes
 # and filter the classes based on a supplied filter
@@ -26,81 +21,6 @@ roi_heads.RoIHeads.forward = custom_roi_heads.forward
 box_ops.batched_nms = custom_boxes.batched_nms
 box_ops._batched_nms_coordinate_trick = custom_boxes._batched_nms_coordinate_trick
 
-def get_xmp(image_file_path):
-    # get xmp information
-    f = open(image_file_path, 'rb')
-    d = f.read()
-    xmp_start = d.find(b'<x:xmpmeta')
-    xmp_end = d.find(b'</x:xmpmeta')
-    xmp_str = (d[xmp_start:xmp_end+12]).lower()
-    # define info to search for
-    dji_xmp_keys = ['relativealtitude']
-    dji_xmp = {}
-    # extract info from xmp
-    for key in dji_xmp_keys:
-        search_str = (key + '="').encode("UTF-8")
-        value_start = xmp_str.find(search_str) + len(search_str)
-        value_end = xmp_str.find(b'"', value_start)
-        value = xmp_str[value_start:value_end]
-        dji_xmp[key] = float(value.decode('UTF-8'))
-    height = dji_xmp["relativealtitude"]
-    return height
-
-def get_gsd(exif, sensor_sizes, image_width, image_height, height):
-    camera_model = exif["0th"][piexif.ImageIFD.Model].decode("utf-8").rstrip('\x00')
-    sensor_width, sensor_length = sensor_sizes[camera_model]
-    focal_length = exif["Exif"][piexif.ExifIFD.FocalLength][0] / exif["Exif"][piexif.ExifIFD.FocalLength][1]
-    pixel_pitch = max(sensor_width / image_width, sensor_length / image_height)
-    # calculate gsd
-    gsd = height * pixel_pitch / focal_length
-    return gsd
-
-def get_gps(exif_dict):
-    latitude_tag = exif_dict['GPS'][piexif.GPSIFD.GPSLatitude]
-    longitude_tag = exif_dict['GPS'][piexif.GPSIFD.GPSLongitude]
-    latitude_ref = exif_dict['GPS'][piexif.GPSIFD.GPSLatitudeRef].decode("utf-8")
-    longitude_ref = exif_dict['GPS'][piexif.GPSIFD.GPSLongitudeRef].decode("utf-8")
-    latitude = degrees(latitude_tag)
-    longitude = degrees(longitude_tag)
-    latitude = -latitude if latitude_ref == 'S' else latitude
-    longitude = -longitude if longitude_ref == 'W' else longitude
-    return latitude, longitude
-
-def degrees(tag):
-    d = tag[0][0] / tag[0][1]
-    m = tag[1][0] / tag[1][1]
-    s = tag[2][0] / tag[2][1]
-    return d + (m / 60.0) + (s / 3600.0)
-
-def is_float(string):
-    try:
-        string = float(string)
-        return string
-    except: return string
-
-def get_region(exif_dict):
-    try:
-        latitude, longitude = get_gps(exif_dict)
-        gps = (longitude, latitude)
-    except:
-        print("Couldn't get GPS")
-        return
-    try:
-        shape_path = ".\code\world_continents\World_Continents.shp"
-        shp = shapefile.Reader(shape_path)
-        all_shapes = shp.shapes()
-        all_records = shp.records()
-        for i in range(len(all_shapes)):
-            boundary = all_shapes[i]
-            if Point(gps).within(shape(boundary)):
-                region = all_records[i][1]
-                if region == "Australia": region = "Oceania"
-                if region == "Africa": region = "Oceania"
-    except Exception as e:
-        print(e)
-        print("Couldn't get continent")
-    return region
-
 def create_detection_model(index_to_class, model_path, device, kwargs, target_gsd):
     num_classes = len(index_to_class) + 1
     backbone = resnet_fpn_backbone(backbone_name = "resnet101", weights = "DEFAULT")
@@ -110,7 +30,6 @@ def create_detection_model(index_to_class, model_path, device, kwargs, target_gs
     step_size = int(((max_bird_size - min_bird_size)/4))
     anchor_sizes = list(range(min_bird_size, max_bird_size + step_size, step_size))
     anchor_sizes = tuple((size / (target_gsd * 100),) for size in anchor_sizes)
-    # anchor_sizes = ((0.25,), (0.5,), (0.75,), (1.0,), (1.25,))
     aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
     rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
     kwargs["rpn_anchor_generator"] = rpn_anchor_generator
@@ -255,30 +174,34 @@ def create_annotation(boxes, scores, image_name, width, height, index_to_class):
         annotation_file.write(annotation_str)
     return
 
-def create_csv(boxes, scores, image_name, header, index_to_class):
+def calculate_gps(ref_latitude, ref_longitude, dx, dy):
+    r_earth = 6371000.0
+    latitude  = ref_latitude  + (-dy / r_earth) * (180 / math.pi)
+    longitude = ref_longitude + (dx / r_earth) * (180 / math.pi) / math.cos(ref_latitude * math.pi/180)
+    return(latitude, longitude)
+
+def create_csv(boxes, scores, image_name, header, index_to_class, ref_latitude, ref_longitude, gsd):
     print("\tUpdating csv...")
     csv_path = "./images/results.csv"
     with open(csv_path, 'a+', newline='') as csvfile:
-        fieldnames = ["image_name", "box", "bird"] + list(index_to_class.values())
+        fieldnames = ["image_name", "box", "x", "y", "latitude", "longitude", "bird"] + list(index_to_class.values())
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         for index in range(len(boxes)):
             if header == False:
                 writer.writeheader()
                 header = True
-            row = {"image_name": image_name, "box": boxes[index].tolist(), "bird": round(sum(scores[index]), 2)}
+            box = boxes[index].tolist()
+            x = (box[0] + box[2])/2
+            y = (box[1] + box[3])/2
+            dx = x * gsd
+            dy = y * gsd
+            latitude, longitude = calculate_gps(ref_latitude, ref_longitude, dx, dy)
+            row = {"image_name": image_name, "box": box, "x": x, "y": y, "latitude": latitude, "longitude": longitude, "bird": round(sum(scores[index]), 2)}
             for fieldname in index_to_class.values():
                 row[fieldname] = scores[index][list(index_to_class.values()).index(fieldname)]
             writer.writerow(row)
 
 def main():
-    sensor_sizes = {
-        "FC220": [6.16, 4.55],
-        "FC330": [6.16, 4.62],
-        "FC7203": [6.3, 4.7],
-        "FC6520": [17.3, 13],
-        "FC6310": [13.2, 8.8],
-        "L1D-20c": [13.2, 8.8]
-        }
 
     # remove old results file
     if os.path.exists("./images/results.csv"):
@@ -297,7 +220,6 @@ def main():
     model_path = os.path.join("./models/bird-detector")
     kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
     index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
-    birds_by_region = json.load(open(os.path.join(model_path, "birds_by_region.json")))
     model = create_detection_model(index_to_class, model_path, device, kwargs, target_gsd)
 
     for file in os.listdir("./images"):
@@ -307,37 +229,26 @@ def main():
             image_path = os.path.join("./images", file)
             image = PIL.Image.open(image_path)
             image_width, image_height = image.size
-            # load image exif data
-            # exif_dict = piexif.load(image.info['exif'])
-            # try calculating gsd
-            print("\tTrying to determine gsd from image metadata")
-            try:
-                # height = get_xmp(image_path)
-                # gsd = get_gsd(exif_dict, sensor_sizes, image_width, image_height, height)
-                gsd = 0.0075
-                print("\tGSD: ", gsd)
-            except:
-                gsd = target_gsd
-                print("\tCouldn't determine gsd, assuming {} meters/pixel".format(target_gsd))
-            # try determining region from image metadata
-            print("\tTrying to determine region from image metadata")
-            try:
-                region = "Oceania"
-                # region = get_region(exif_dict)
-                print("\tRegion: ", region)
-            except:
-                region = "Oceania"
-                print("\tCouldn't determine region, so including all species")
-            # if gsd too large skip image
-            if gsd > 0.0075:
-                print("GSD too large")
-                continue
+            # set gps and species
+            gsd = 0.007029940836496699
+            ref_latitude = -27.44423
+            ref_longitude = 153.1816
+            included_species = [
+                "Pacific Black Duck_aves_adult_anseriformes_anatidae_anas_superciliosa",
+                "Silver Gull_aves_adult_charadriiformes_laridae_chroicocephalus_novaehollandiae",
+                "Pied Stilt_aves_adult_charadriiformes_recurvirostridae_himantopus_leucocephalus",
+                "Gull-billed Tern_aves_adult_charadriiformes_laridae_gelochelidon_nilotica",
+                "Bar-tailed Godwit_aves_adult_charadriiformes_scolopacidae_limosa_lapponica",
+                "Australian Wood Duck_aves_adult_anseriformes_anatidae_chenonetta_jubata",
+                "Masked Lapwing_aves_adult_charadriiformes_charadriidae_vanellus_miles",
+                "Royal Spoonbill_aves_adult_pelecaniformes_threskiornithidae_platalea_regia",
+                "Australian White Ibis_aves_adult_pelecaniformes_threskiornithidae_threskiornis_molucca"]
             # update model with new regional filter
             class_filter = torch.zeros(len(index_to_class) + 1)
             class_filter[0] = 1
             for i in range(1, len(index_to_class) + 1):
-                species = ' '.join(index_to_class[str(i)].split("_")[-2:])
-                if species in birds_by_region[region]:
+                species = index_to_class[str(i)]
+                if species in included_species:
                     class_filter[i] = 1
             # update detection model regional filter
             model = update_detection_model(model, class_filter, device)
@@ -348,7 +259,7 @@ def main():
                 create_annotation(boxes, scores, file, image_width, image_height, index_to_class)
             # create dictionary of results
             if len(boxes) > 0:
-                create_csv(boxes, scores, file, header, index_to_class)
+                create_csv(boxes, scores, file, header, index_to_class, ref_latitude, ref_longitude, gsd)
             header = True
     print("\tDone!")
 
