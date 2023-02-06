@@ -15,8 +15,8 @@ class DetectionPresetTrain:
             self.transforms = T.Compose(
                 [
                     T.RandomPhotometricDistort(
-                        contrast = (0.5, 1.5),
-                        saturation = (0.5, 1.5),
+                        contrast =(0.875, 1.125),
+                        saturation = (0.875, 1.125),
                         hue = (-0.05, 0.05),
                         brightness = (0.875, 1.125),
                         p = prob),

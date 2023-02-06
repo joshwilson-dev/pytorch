@@ -2,7 +2,6 @@ import torch.nn.functional as F
 from torchvision.ops import boxes as box_ops
 import torch
 from torchvision.models.detection import roi_heads
-from torchvision.ops import boxes as box_ops
 
 # update box ops?
 
