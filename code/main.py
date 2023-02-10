@@ -12,6 +12,10 @@ from torchvision.ops import boxes as box_ops
 import custom_roi_heads
 import custom_boxes
 
+# for mask auto label
+import numpy
+import cv2
+
 # redefining roi_heads to return scores for all classes
 # and filter the classes based on a supplied filter
 roi_heads.RoIHeads.postprocess_detections = custom_roi_heads.postprocess_detections
@@ -20,6 +24,13 @@ roi_heads.RoIHeads.forward = custom_roi_heads.forward
 # redefining boxes to do nms on all classes, not class specific
 box_ops.batched_nms = custom_boxes.batched_nms
 box_ops._batched_nms_coordinate_trick = custom_boxes._batched_nms_coordinate_trick
+
+def points_from_mask(mask):
+    mask = numpy.where(mask, 255, 0).astype(numpy.uint8)
+    points, _ = cv2.findContours(mask[0], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    points = points[0].reshape(-1, 2).tolist()
+    points = points[0::5]
+    return points
 
 def create_detection_model(index_to_class, model_path, device, kwargs, target_gsd, class_filter):
     num_classes = len(index_to_class) + 1
@@ -33,6 +44,11 @@ def create_detection_model(index_to_class, model_path, device, kwargs, target_gs
     aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
     rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
     kwargs["rpn_anchor_generator"] = rpn_anchor_generator
+    # if args.model == "MaskRCNN":
+    #     mask_predictor_in_channels = 256
+    #     mask_dim_reduced = 256
+    #     mask_predictor = torchvision.models.detection.mask_rcnn.MaskRCNNPredictor(mask_predictor_in_channels, mask_dim_reduced, num_classes)
+    #     kwargs["mask_predictor"] = mask_predictor
     model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
     model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict.pth"), map_location=device))
     model.roi_heads.class_filter = class_filter.to(device)
@@ -124,11 +140,24 @@ def detect_birds(kwargs, image_path, model, device, index_to_class, overlap, pat
             scores = torch.cat((scores, batch_scores.to(torch.device("cpu"))), 0)
             class_scores = torch.cat((class_scores, batch_class_scores.to(torch.device("cpu"))), 0)
             labels = torch.cat((labels, batch_labels.to(torch.device("cpu"))), 0)
+            # if args.model == "MaskRCNN":
+            #     # pad masks to full image
+            #     padding_right = width - padding_left - patch_size
+            #     padding_bottom = height - padding_top - patch_size
+            #     padding = (int(math.ceil(padding_left)), int(math.floor(padding_right)), int(math.ceil(padding_top)), int(math.floor(padding_bottom)))
+            #     padded_masks = torch.nn.functional.pad(prediction[patch_index]["masks"], padding, "constant", 0)
+            #     masks = torch.cat((masks, padded_masks), 0)
     nms_indices = box_ops.batched_nms(boxes, scores, labels, kwargs["box_nms_thresh"])
     boxes = boxes[nms_indices]
     scores = scores[nms_indices].tolist()
     class_scores = class_scores[nms_indices].tolist()
     labels = labels[nms_indices].tolist()
+    # if args.model == "MaskRCNN":
+    #     shape_type = "polygon"
+    #     mask_threshold = 0.4
+    #     masks = masks[nms_indices] > mask_threshold
+    #     for mask in masks:
+    #         points.append(points_from_mask(mask))
     return boxes, class_scores
 
 def create_annotation(boxes, scores, image_name, width, height, index_to_class):
