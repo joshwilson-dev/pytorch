@@ -4,6 +4,7 @@
 /wiener
 /images
 /code/images
+/frontend/model_best_state_dict.pth
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

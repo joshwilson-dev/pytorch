@@ -59,14 +59,13 @@ if len(file_path_variable) > 0:
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
-                if "dataset" not in root:
-                    if "fully annotated" in root or "backgrounds" in root:
-                        if file.endswith(".json"):
-                            annotation_file_name = file
-                            annotation_file_path = os.path.join(root, annotation_file_name)
-                            annotation = json.load(open(annotation_file_path))
-                            image_file_name = annotation["imagePath"]
-                            image_file_path = os.path.join(root, image_file_name)
-                            print(image_file_path)
-                            shutil.copyfile(image_file_path, os.path.join(input, image_file_name))
-                            shutil.copyfile(annotation_file_path, os.path.join(input, annotation_file_name))
+                if "fully annotated" in root or "backgrounds" in root:
+                    if file.endswith(".json"):
+                        annotation_file_name = file
+                        annotation_file_path = os.path.join(root, annotation_file_name)
+                        annotation = json.load(open(annotation_file_path))
+                        image_file_name = annotation["imagePath"]
+                        image_file_path = os.path.join(root, image_file_name)
+                        print(image_file_path)
+                        shutil.copyfile(image_file_path, os.path.join(input, image_file_name))
+                        shutil.copyfile(annotation_file_path, os.path.join(input, annotation_file_name))

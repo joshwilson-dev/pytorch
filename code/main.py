@@ -21,7 +21,7 @@ roi_heads.RoIHeads.forward = custom_roi_heads.forward
 box_ops.batched_nms = custom_boxes.batched_nms
 box_ops._batched_nms_coordinate_trick = custom_boxes._batched_nms_coordinate_trick
 
-def create_detection_model(index_to_class, model_path, device, kwargs, target_gsd):
+def create_detection_model(index_to_class, model_path, device, kwargs, target_gsd, class_filter):
     num_classes = len(index_to_class) + 1
     backbone = resnet_fpn_backbone(backbone_name = "resnet101", weights = "DEFAULT")
     box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
@@ -35,12 +35,9 @@ def create_detection_model(index_to_class, model_path, device, kwargs, target_gs
     kwargs["rpn_anchor_generator"] = rpn_anchor_generator
     model = torchvision.models.detection.__dict__["FasterRCNN"](box_predictor = box_predictor, backbone = backbone, **kwargs)
     model.load_state_dict(torch.load(os.path.join(model_path, "model_best_state_dict.pth"), map_location=device))
+    model.roi_heads.class_filter = class_filter.to(device)
     model.eval()
     model = model.to(device)
-    return model
-
-def update_detection_model(model, class_filter, device):
-    model.roi_heads.class_filter = class_filter.to(device)
     return model
 
 def prepare_image_for_detection(image_path, overlap, patch_width, patch_height, gsd, target_gsd):
@@ -214,13 +211,34 @@ def main():
     reject = 10
     target_gsd = 0.005
     header = False
+    # set gps and species
+    gsd = 0.007029940836496699
+    ref_latitude = -27.44423
+    ref_longitude = 153.1816
+    included_species = [
+        "Pacific Black Duck_aves_adult_anseriformes_anatidae_anas_superciliosa",
+        "Silver Gull_aves_adult_charadriiformes_laridae_chroicocephalus_novaehollandiae",
+        "Pied Stilt_aves_adult_charadriiformes_recurvirostridae_himantopus_leucocephalus",
+        "Gull-billed Tern_aves_adult_charadriiformes_laridae_gelochelidon_nilotica",
+        "Bar-tailed Godwit_aves_adult_charadriiformes_scolopacidae_limosa_lapponica",
+        "Australian Wood Duck_aves_adult_anseriformes_anatidae_chenonetta_jubata",
+        "Masked Lapwing_aves_adult_charadriiformes_charadriidae_vanellus_miles",
+        "Royal Spoonbill_aves_adult_pelecaniformes_threskiornithidae_platalea_regia",
+        "Australian White Ibis_aves_adult_pelecaniformes_threskiornithidae_threskiornis_molucca"]
+    # update model with new regional filter
+    class_filter = torch.zeros(len(index_to_class) + 1)
+    class_filter[0] = 1
+    for i in range(1, len(index_to_class) + 1):
+        species = index_to_class[str(i)]
+        if species in included_species:
+            class_filter[i] = 1
 
     # create detection model
     device = torch.device("cuda")
     model_path = os.path.join("./models/bird-detector")
     kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
     index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
-    model = create_detection_model(index_to_class, model_path, device, kwargs, target_gsd)
+    model = create_detection_model(index_to_class, model_path, device, kwargs, target_gsd, class_filter)
 
     for file in os.listdir("./images"):
         if file.lower().endswith((".jpg", ".jpeg")):
@@ -229,29 +247,6 @@ def main():
             image_path = os.path.join("./images", file)
             image = PIL.Image.open(image_path)
             image_width, image_height = image.size
-            # set gps and species
-            gsd = 0.007029940836496699
-            ref_latitude = -27.44423
-            ref_longitude = 153.1816
-            included_species = [
-                "Pacific Black Duck_aves_adult_anseriformes_anatidae_anas_superciliosa",
-                "Silver Gull_aves_adult_charadriiformes_laridae_chroicocephalus_novaehollandiae",
-                "Pied Stilt_aves_adult_charadriiformes_recurvirostridae_himantopus_leucocephalus",
-                "Gull-billed Tern_aves_adult_charadriiformes_laridae_gelochelidon_nilotica",
-                "Bar-tailed Godwit_aves_adult_charadriiformes_scolopacidae_limosa_lapponica",
-                "Australian Wood Duck_aves_adult_anseriformes_anatidae_chenonetta_jubata",
-                "Masked Lapwing_aves_adult_charadriiformes_charadriidae_vanellus_miles",
-                "Royal Spoonbill_aves_adult_pelecaniformes_threskiornithidae_platalea_regia",
-                "Australian White Ibis_aves_adult_pelecaniformes_threskiornithidae_threskiornis_molucca"]
-            # update model with new regional filter
-            class_filter = torch.zeros(len(index_to_class) + 1)
-            class_filter[0] = 1
-            for i in range(1, len(index_to_class) + 1):
-                species = index_to_class[str(i)]
-                if species in included_species:
-                    class_filter[i] = 1
-            # update detection model regional filter
-            model = update_detection_model(model, class_filter, device)
             # detect birds
             boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
             # create label file

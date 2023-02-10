@@ -77,6 +77,10 @@ sensor_size = {
     "Survey2_RGB": [6.17472, 4.63104]
     }
 
+def dms_to_dd(d, m, s):
+    dd = d + float(m)/60 + float(s)/3600
+    return dd
+
 file_path_variable = search_for_file_path()
 
 # did the user select a dir or cancel?
@@ -95,6 +99,9 @@ if len(file_path_variable) > 0:
                     image_file_path = os.path.join(root, file)
                     annotation_file = os.path.splitext(file)[0] + ".json"
                     annotation_file_path = os.path.join(root, annotation_file)
+                    # get the gsd & associated metrics
+                    image = Image.open(image_file_path)
+                    exif_dict = piexif.load(image.info['exif'])
                     if os.path.exists(annotation_file_path):
                         annotation = json.load(open(annotation_file_path))
                     else:
@@ -102,12 +109,10 @@ if len(file_path_variable) > 0:
                         continue
                     try:
                         gsd = annotation["gsd"]
-                        latitude = annotation["latitude"]
-                        longitude = annotation["longitude"]
-                        print("\tGSD, Latitude, and Longitude already in annotation, skipping file")
+                        print("\tGSD already in annotation, skipping file")
                         continue
                     except:
-                        print("\tCouldn't get GSD, latitude, and longitude from annotation")
+                        print("\tCouldn't get GSD from annotation")
                         try:
                             # get xmp information
                             f = open(image_file_path, 'rb')
@@ -116,10 +121,7 @@ if len(file_path_variable) > 0:
                             xmp_end = d.find(b'</x:xmpmeta')
                             xmp_str = (d[xmp_start:xmp_end+12]).lower()
                             # Extract dji info
-                            dji_xmp_keys = [
-                                'gpslatitude',
-                                'gpslongitude',
-                                'relativealtitude']
+                            dji_xmp_keys = ['relativealtitude']
                             dji_xmp = {}
                             for key in dji_xmp_keys:
                                 search_str = (key + '="').encode("UTF-8")
@@ -128,16 +130,11 @@ if len(file_path_variable) > 0:
                                 value = xmp_str[value_start:value_end]
                                 dji_xmp[key] = float(value.decode('UTF-8'))
                             height = dji_xmp["relativealtitude"]
-                            latitude = dji_xmp["gpslatitude"]
-                            longitude = dji_xmp["gpslongitude"]
-                            print("\tGot height, latitude, and longitude from xmp")
+                            print("\tGot height from xmp")
                         except:
-                            print("\tCouldn't get height, latitude, or longitude from xmp, skipping file")
+                            print("\tCouldn't get height from xmp skipping file")
                             continue
                         print("\tCalculating gsd...")
-                        # get the gsd & associated metrics
-                        image = Image.open(image_file_path)
-                        exif_dict = piexif.load(image.info['exif'])
                         try:
                             gsd = get_gsd(exif_dict, height)
                         except:
@@ -145,9 +142,7 @@ if len(file_path_variable) > 0:
                             continue
                         # add gsd to annotation
                         annotation["gsd"] = gsd
-                        annotation["latitude"] = latitude
-                        annotation["longitude"] = longitude
                         annotation = json.dumps(annotation, indent = 2).replace('"null"', 'null')
                         with open(annotation_file_path, 'w') as annotation_file:
                             annotation_file.write(annotation)
-                        print("\tWrote GSD, latitude, and longitude to annotation")
+                        print("\tWrote GSD to annotation")

@@ -196,14 +196,13 @@ def save_dataset(train, test):
         for image_path, patches in dataset:
             # open image
             image = Image.open(image_path)
-            # read exif data
-            exif_dict = piexif.load(image.info['exif'])
-            comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
-            # update exif data
-            comments["original_image"] = image_path
-            comments["gsd"] = target_gsd
-            exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
-            image_exif = piexif.dump(exif_dict)
+            # # update exif data
+            # exif_dict = piexif.load(image.info['exif'])
+            # comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+            # comments["original_image"] = image_path
+            # comments["gsd"] = target_gsd
+            # exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
+            # image_exif = piexif.dump(exif_dict)
             patches = patches.groupby("patch_points")
             for patch_points, instances in patches:
                 # crop the image to the patch
@@ -304,7 +303,7 @@ def save_dataset(train, test):
                     "file_name": patch_name}
                 coco["images"].append(coco_image_info)
                 # save patch
-                patch_object.save(patch_path, exif = image_exif)
+                patch_object.save(patch_path)#, exif = image_exif)
                 # save labeleme
                 labelme = {
                     "version": "5.0.1",
@@ -383,7 +382,10 @@ if len(file_path_variable) > 0:
                     image_height = annotation["imageHeight"]
 
                     # get the gsd
-                    image_gsd = annotation["gsd"]
+                    try:
+                        image_gsd = annotation["gsd"]
+                    except:
+                        print("NO GSD")
                     if image_gsd > max_gsd:
                         print("GSD too coarse")
                         continue
