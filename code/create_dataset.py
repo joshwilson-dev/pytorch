@@ -350,10 +350,10 @@ if len(file_path_variable) > 0:
         data = {k:[] for k in dataset_keys}
         # variables
         target_gsd = 0.005
-        max_gsd = 0.0075
+        max_gsd = 0.015
         min_gsd = 0.0025
         min_instances_class = 100
-        min_polygons_class = 50
+        min_polygons_class = 100
         max_instances_class = 10000
         train_test_ratio = 0.25
         max_instances_class_test = max_instances_class * train_test_ratio

@@ -9,6 +9,7 @@ from coco_eval import CocoEvaluator
 from coco_utils import get_coco_api_from_dataset
 import copy
 from coco_eval import evaluate as coco_evaluate
+import numpy as np
 
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
@@ -89,10 +90,10 @@ def evaluate(model, data_loader, device):
     min_dim = 0
     max_dim = 10000
     steps = 10
-    step_size = int((max_dim - min_dim)/steps)
-    dims = range(min_dim, max_dim, step_size)
+    step_size = (max_dim - min_dim)/steps
+    dims = np.arange(min_dim, max_dim, step_size)
     areaRng = [[0, 1e5 ** 2]] + [[dim, (dim + step_size)] for dim in dims]
-    areaRngLbl = [str(dim[1]) for dim in areaRng]
+    areaRngLbl = ['all'] + [str(dim[1]) for dim in areaRng]
     coco_evaluator.coco_eval["bbox"].params.areaRng = areaRng
     coco_evaluator.coco_eval["bbox"].params.areaRngLbl = areaRngLbl
 

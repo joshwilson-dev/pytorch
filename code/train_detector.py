@@ -363,13 +363,12 @@ def main(args):
         torch.backends.cudnn.deterministic = True
         results = evaluate(model, data_loader_test, device=device)
         save_eval(results)
-        # save_eval_two(results)
-  
-    from torch.utils.tensorboard import SummaryWriter
-    writer = SummaryWriter(log_dir = args.output_dir)
-    epochs_without_improvement = 0
-    lr_steps = 0
-    best_mARP = 0
+    if not args.test_only:
+        from torch.utils.tensorboard import SummaryWriter
+        writer = SummaryWriter(log_dir = args.output_dir)
+        epochs_without_improvement = 0
+        lr_steps = 0
+        best_mARP = 0
 
     print("Start training")
     start_time = time.time()
@@ -389,7 +388,7 @@ def main(args):
                 checkpoint["scaler"] = scaler.state_dict()
 
         results = evaluate(model, data_loader_test, device=device)
-        result = list(filter(lambda d: d['supercat'] == False and d['gsd'] == max(results, key=lambda x:x['gsd'])['gsd'], results))
+        result = list(filter(lambda d: d['useCats'] == 1, results))[0]
         mAP = result["evaluator"].coco_eval["bbox"].stats[0]
         mAR = result["evaluator"].coco_eval["bbox"].stats[8]
         mARP = (mAP + mAR) / 2
