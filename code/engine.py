@@ -81,14 +81,16 @@ def evaluate(model, data_loader, device):
     header = "Test:"
 
     coco = get_coco_api_from_dataset(data_loader.dataset)
+    # get gsds of images
+    gsds = [image["gsd"] for image in coco.dataset["images"]]
     iou_types = _get_iou_types(model)
     supercat_coco = copy.deepcopy(coco)
     for i in range(len(supercat_coco.anns)):
         supercat_coco.anns[i + 1]["category_id"] = 1
-
+    supercat_coco.cats = {1: {'id': 1, 'name': 'Bird', 'supercategory': 'Bird'}}
+    supercat_coco.dataset["categories"] = [{'id': 1, 'name': 'Bird', 'supercategory': 'Bird'}]
     coco_evaluator = CocoEvaluator(coco, iou_types)
     supercat_coco_evaluator = CocoEvaluator(supercat_coco, iou_types)
-
     for images, targets in metric_logger.log_every(data_loader, 100, header):
         images = list(img.to(device) for img in images)
 
@@ -102,6 +104,7 @@ def evaluate(model, data_loader, device):
         supercat_outputs[0]["scores"] = torch.tensor([sum(class_scores) for class_scores in supercat_outputs[0]["class_scores"]])
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+        supercat_outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in supercat_outputs]
         model_time = time.time() - model_time
 
         res = {target["image_id"].item(): output for target, output in zip(targets, outputs)}
@@ -119,9 +122,25 @@ def evaluate(model, data_loader, device):
     supercat_coco_evaluator.synchronize_between_processes()
 
     # accumulate predictions from all images
-    coco_evaluator.accumulate()
-    coco_evaluator.summarize()
-    supercat_coco_evaluator.accumulate()
-    supercat_coco_evaluator.summarize()
+    # coco_evaluator.accumulate()
+    # coco_evaluator.summarize()
+    # supercat_coco_evaluator.accumulate()
+    # supercat_coco_evaluator.summarize()
+    # torch.set_num_threads(n_threads)
+    # return coco_evaluator, supercat_coco_evaluator
+
+    # accumulate predictions from all images for each gsd
+    gsd_cats = [gsd / 1000 for gsd in range(2, 11, 1)]
+    results = []
+    for gsd in gsd_cats:
+        for supercat in [False, True]:
+            indices = [idx + 1 for idx, element in enumerate(gsds) if element <= gsd]
+            if supercat == False:
+                evaluator = coco_evaluator
+            else: evaluator = supercat_coco_evaluator
+            evaluator.coco_eval["bbox"].params.imgIds = indices
+            evaluator.accumulate()
+            evaluator.summarize()
+            results.append({"gsd": gsd, "supercat": supercat, "evaluator": copy.deepcopy(evaluator)})
     torch.set_num_threads(n_threads)
-    return coco_evaluator, supercat_coco_evaluator
+    return results

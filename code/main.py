@@ -244,7 +244,7 @@ def main():
     gsd = 0.007029940836496699
     ref_latitude = -27.44423
     ref_longitude = 153.1816
-    included_species = [
+    index_to_class = [
         "Pacific Black Duck_aves_adult_anseriformes_anatidae_anas_superciliosa",
         "Silver Gull_aves_adult_charadriiformes_laridae_chroicocephalus_novaehollandiae",
         "Pied Stilt_aves_adult_charadriiformes_recurvirostridae_himantopus_leucocephalus",

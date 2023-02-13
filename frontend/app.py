@@ -2,6 +2,7 @@ import gradio as gr
 import os
 import math
 import csv
+import json
 import pathlib
 import torch
 import torch
@@ -158,7 +159,7 @@ def create_csv(boxes, class_scores, labels, index_to_class, ref_latitude, ref_lo
             dx = x * gsd
             dy = y * gsd
             latitude, longitude = calculate_gps(ref_latitude, ref_longitude, dx, dy)
-            row = {"box": box, "x": x, "y": y, "latitude": latitude, "longitude": longitude, "bird": round(sum(class_scores[index]), 2), "species": index_to_class[labels[index]]}
+            row = {"box": box, "x": x, "y": y, "latitude": latitude, "longitude": longitude, "bird": round(sum(class_scores[index]), 2), "species": index_to_class[str(labels[index])]}
             for fieldname in index_to_class.values():
                 row[fieldname] = class_scores[index][list(index_to_class.values()).index(fieldname)]
             writer.writerow(row)
@@ -186,21 +187,16 @@ def main(image, gsd, reference_latitude, reference_longitude, included_species, 
     max_size = max(patch_height, patch_width)
     min_size = min(patch_height, patch_width)
     # define kwargs
-    kwargs = {
-        "rpn_pre_nms_top_n_test": 10000,
-        "rpn_post_nms_top_n_test": 10000,
-        "rpn_nms_thresh": 0.2,
-        "rpn_score_thresh": 0.01,
-        "box_score_thresh": box_score_thresh,
-        "box_nms_thresh": box_nms_thresh,
-        "box_detections_per_img": 1000,
-        "min_size": min_size,
-        "max_size": max_size}
+    kwargs = json.load(open("kwargs.json"))
+    kwargs["box_score_thresh"] = box_score_thresh
+    kwargs["box_nms_thresh"] = box_nms_thresh
+    kwargs["min_size"] = min_size
+    kwargs["max_size"] = max_size
     # create class filter
     class_filter = torch.zeros(len(index_to_class) + 1)
     class_filter[0] = 1
     for i in range(1, len(index_to_class) + 1):
-        species = index_to_class[i]
+        species = index_to_class[str(i)]
         if species in included_species:
             class_filter[i] = 1
     # create detection model
@@ -211,7 +207,7 @@ def main(image, gsd, reference_latitude, reference_longitude, included_species, 
     boxes, class_scores, scores, labels = detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
 
     # draw boxes on images
-    labelled_scores = ["Bird: " + str(round(sum(class_scores[i]),2)) + "\n" + index_to_class[labels[i]] + ": " + str(round(scores[i], 2)) for i in range(len(scores))]
+    labelled_scores = ["Bird: " + str(round(sum(class_scores[i]),2)) + "\n" + index_to_class[str(labels[i])] + ": " + str(round(scores[i], 2)) for i in range(len(scores))]
     tensor_image = torchvision.transforms.PILToTensor()(image)
     labelled_image = draw_bounding_boxes(tensor_image, boxes, labelled_scores, colors = "blue", width = 2)
     labelled_image = torchvision.transforms.ToPILImage()(labelled_image)
@@ -221,16 +217,7 @@ def main(image, gsd, reference_latitude, reference_longitude, included_species, 
     
     return [labelled_image, "results.csv"]
 
-index_to_class = {
-    1: "Pacific Black Duck",
-    2: "Silver Gull",
-    3: "Pied Stilt",
-    4: "Gull-billed Tern",
-    5: "Bar-tailed Godwit",
-    6: "Australian Wood Duck",
-    7: "Masked Lapwing",
-    8: "Royal Spoonbill",
-    9: "Australian White Ibis"}
+index_to_class = json.load(open("index_to_class.json"))
 
 inputs = [
     gr.Image(type="pil", label="Orthomosaic"),
@@ -257,8 +244,7 @@ description = "This application determines the determines the GPS locatoin of bi
 # Add examples to Gradio Interface
 examples = [
     [pathlib.Path('demo1.jpg').as_posix(), 0.005, -27.48388, 153.11551, list(index_to_class.values()), 0.7, 0.2, False],
-    [pathlib.Path('demo2.jpg').as_posix(), 0.005, -27.04474, 153.10526, list(index_to_class.values()), 0.7, 0.2, False],
-    [pathlib.Path('demo3.jpg').as_posix(), 0.007, -27.44423, 153.18161, list(index_to_class.values()), 0.7, 0.2, False]]
+    [pathlib.Path('demo2.jpg').as_posix(), 0.005, -27.04474, 153.10526, list(index_to_class.values()), 0.7, 0.2, False]]
 # Generate Gradio interface
 demo = gr.Interface(
     fn = main,

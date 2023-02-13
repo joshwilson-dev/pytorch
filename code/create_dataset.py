@@ -203,6 +203,7 @@ def save_dataset(train, test):
             # comments["gsd"] = target_gsd
             # exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
             # image_exif = piexif.dump(exif_dict)
+            gsd = patches.iloc[0]["image_gsd"]
             patches = patches.groupby("patch_points")
             for patch_points, instances in patches:
                 # crop the image to the patch
@@ -300,7 +301,8 @@ def save_dataset(train, test):
                     "height": size[1],
                     "width": size[0],
                     "id": coco_image_id,
-                    "file_name": patch_name}
+                    "file_name": patch_name,
+                    "gsd": gsd}
                 coco["images"].append(coco_image_info)
                 # save patch
                 patch_object.save(patch_path)#, exif = image_exif)
