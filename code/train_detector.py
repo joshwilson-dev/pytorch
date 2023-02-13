@@ -193,10 +193,9 @@ def save_eval(results):
     #  precision  - [TxRxKxAxM] precision for every evaluation setting
     #  recall     - [TxKxAxM] max recall for every evaluation setting
     #  score      - [TxRxKxAxM] score for every evaluation setting
-    result_dict = {'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': [], 'supercat': [], 'gsd': []}
+    result_dict = {'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': [], 'useCats': []}
     for result in results:
-        gsd = result["gsd"]
-        supercat = result["supercat"]
+        useCats = result["useCats"]
         iouThrs = result["evaluator"].coco_eval["bbox"].eval["params"].iouThrs
         recThrs = result["evaluator"].coco_eval["bbox"].eval["params"].recThrs
         catIds = result["evaluator"].coco_eval["bbox"].eval["params"].catIds
@@ -214,8 +213,7 @@ def save_eval(results):
                             result_dict['maxDet'].append(maxDets[maxDet_index])
                             result_dict['precision'].append(result["evaluator"].coco_eval["bbox"].eval["precision"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
                             result_dict['scores'].append(result["evaluator"].coco_eval["bbox"].eval["scores"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
-                            result_dict['supercat'].append(supercat)
-                            result_dict['gsd'].append(gsd)
+                            result_dict['useCats'].append(useCats)
     with open(os.path.join(args.output_dir, "performance_metrics.csv"), "w", newline='') as outfile:
         writer = csv.writer(outfile)
         writer.writerow(result_dict.keys())
@@ -223,14 +221,14 @@ def save_eval(results):
     return
 
 def save_eval_two(results):
-    res = [i for i in results.coco_eval["bbox"].evalImgs if i is not None]
+    result = list(filter(lambda d: d['useCats'] == 1, results))
+    res = [i for i in result["evaluator"].coco_eval["bbox"].evalImgs if i is not None]
     keys = res[0].keys()
     with open('performance_metrice_per_img.csv', 'w', newline='') as output_file:
         dict_writer = csv.DictWriter(output_file, keys)
         dict_writer.writeheader()
         dict_writer.writerows(res)
     return
-
 
 def main(args):
     if args.output_dir:
@@ -365,6 +363,7 @@ def main(args):
         torch.backends.cudnn.deterministic = True
         results = evaluate(model, data_loader_test, device=device)
         save_eval(results)
+        # save_eval_two(results)
   
     from torch.utils.tensorboard import SummaryWriter
     writer = SummaryWriter(log_dir = args.output_dir)

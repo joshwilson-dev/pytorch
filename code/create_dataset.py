@@ -240,7 +240,8 @@ def save_dataset(train, test):
                         ymax = max(instance_mask, key=lambda x: x[1])[1]
                         coco_instance_box = [xmin, ymin, xmax - xmin, ymax - ymin]
                         labelme_instance_box = [[xmin, ymin], [xmax, ymax]]
-                        area = coco_instance_box[2] * coco_instance_box[3]
+                        resized_area = coco_instance_box[2] * coco_instance_box[3]
+                        area = resized_area / (instance["instance_gsd"]/target_gsd)
                         # blackout instances that aren't included
                         if instance["instance_class"] not in included_classes or\
                             instance["instance_overlap"] < min_overlap:
@@ -273,7 +274,8 @@ def save_dataset(train, test):
                             "segmentation": [[item for sublist in instance_mask for item in sublist]],
                             "bbox": coco_instance_box,
                             "id": coco_instance_id,
-                            "area": area}
+                            "area": area,
+                            "resized_area": resized_area}
                         if len(instance_mask) == 4:
                             labelme_annotation["points"] = labelme_instance_box
                             labelme_annotation["shape_type"] = "rectangle"
@@ -344,7 +346,7 @@ if len(file_path_variable) > 0:
             "image_path", "image_gsd", "patch_points",
             "instance_type", "instance_object", "instance_class",
             "instance_crop", "instance_mask", "instance_shape_type",
-            "instance_overlap"]
+            "instance_overlap", "instance_gsd"]
         data = {k:[] for k in dataset_keys}
         # variables
         target_gsd = 0.005
@@ -477,9 +479,10 @@ if len(file_path_variable) > 0:
                                 data["instance_mask"].append(instance_mask)
                                 data["instance_shape_type"].append(shape["shape_type"])
                                 data["instance_overlap"].append(instance_overlap)
+                                data["instance_gsd"].append(image_gsd)
                                 instance_in_patch = True
                                 
-                            # if there was no instancs in the patch add it as background
+                            # if there was no instances in the patch add it as background
                             if instance_in_patch == False:
                                 data["image_path"].append(image_path)
                                 data["image_gsd"].append(image_gsd)
@@ -491,6 +494,8 @@ if len(file_path_variable) > 0:
                                 data["instance_mask"].append("null")
                                 data["instance_shape_type"].append("null")
                                 data["instance_overlap"].append(1.0)
+                                data["instance_gsd"].append("null")
+
         # convert dictionary to dataframe
         data = pd.DataFrame(data=data)
         # class abundance
@@ -612,7 +617,7 @@ if len(file_path_variable) > 0:
                 # save info to dataframe
                 for index, row in instances.iterrows():
                     instance_object, instance_mask = transforms(row["instance_object"], row["instance_crop"], target_gsd, min_gsd, max_gsd)
-                    train_row = pd.DataFrame([[image_path, image_gsd, patch_points, instance_object, row["instance_class"], instance_mask, "artificial", 1.0]], columns = ["image_path", "image_gsd", "patch_points", "instance_object", "instance_class", "instance_mask", "instance_type", "instance_overlap"])
+                    train_row = pd.DataFrame([[image_path, image_gsd, patch_points, instance_object, row["instance_class"], instance_mask, "artificial", 1.0, row["instance_gsd"]]], columns = ["image_path", "image_gsd", "patch_points", "instance_object", "instance_class", "instance_mask", "instance_type", "instance_overlap", "instance_gsd"])
                     train_data.append(train_row)
         train = (
             pd.concat(train_data, ignore_index=True)
