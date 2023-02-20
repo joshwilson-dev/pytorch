@@ -2,6 +2,7 @@ import gradio as gr
 import os
 import math
 import csv
+import json
 import pathlib
 import torch
 import torch
@@ -48,8 +49,7 @@ def create_detection_model(index_to_class, model_path, device, kwargs, target_gs
     return model
 
 # function to prepare image for detection with patching to fit in GPU
-def prepare_image_for_detection(image, overlap, patch_width, patch_height, gsd, target_gsd):
-    scale = target_gsd/gsd
+def prepare_image_for_detection(image, overlap, patch_width, patch_height, scale):
     width, height = image.size
     width = int(width / scale)
     height = int(height / scale)
@@ -74,11 +74,11 @@ def prepare_image_for_detection(image, overlap, patch_width, patch_height, gsd, 
             batch.append(patch)
     dim = torch.Tensor(0, 3, patch_height, patch_width)
     batch = torch.cat(batch, out=dim)
-    return batch, pad_width, pad_height, n_crops_height, n_crops_width, scale
+    return batch, pad_width, pad_height, n_crops_height, n_crops_width
 
 # perform detection
-def detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd):
-    batch, pad_width, pad_height, n_crops_height, n_crops_width, scale = prepare_image_for_detection(image, overlap, patch_width, patch_height, gsd, target_gsd)
+def detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, scale):
+    batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image_for_detection(image, overlap, patch_width, patch_height, scale)
     max_batch_size = 15
     batch_length = batch.size()[0]
     sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
@@ -132,10 +132,10 @@ def detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_wi
             labels = torch.cat((labels, batch_labels.to(torch.device("cpu"))), 0)
     nms_indices = box_ops.batched_nms(boxes, scores, labels, kwargs["box_nms_thresh"])
     boxes = boxes[nms_indices]
-    scores = scores[nms_indices].tolist()
-    class_scores = class_scores[nms_indices].tolist()
-    labels = labels[nms_indices].tolist()
-    return boxes, class_scores, scores, labels
+    scores = scores[nms_indices]
+    class_scores = class_scores[nms_indices]
+    labels = labels[nms_indices]
+    return boxes, scores, labels, class_scores
 
 # Calculate the GPS of each bird based on pixel co-ordinates
 def calculate_gps(ref_latitude, ref_longitude, dx, dy):
@@ -158,13 +158,13 @@ def create_csv(boxes, class_scores, labels, index_to_class, ref_latitude, ref_lo
             dx = x * gsd
             dy = y * gsd
             latitude, longitude = calculate_gps(ref_latitude, ref_longitude, dx, dy)
-            row = {"box": box, "x": x, "y": y, "latitude": latitude, "longitude": longitude, "bird": round(sum(class_scores[index]), 2), "species": index_to_class[labels[index]]}
+            row = {"box": box, "x": x, "y": y, "latitude": latitude, "longitude": longitude, "bird": round(sum(class_scores[index]), 2), "species": index_to_class[str(labels[index])]}
             for fieldname in index_to_class.values():
                 row[fieldname] = class_scores[index][list(index_to_class.values()).index(fieldname)]
             writer.writerow(row)
     return
 
-def main(image, gsd, reference_latitude, reference_longitude, included_species, box_score_thresh, box_nms_thresh, gpu):  
+def main(image, gsd, reference_latitude, reference_longitude, min_pixel_area, included_species, box_score_thresh, box_nms_thresh, gpu):  
     if os.path.exists("results.csv"):
         os.remove("results.csv")
     # Define constants
@@ -186,21 +186,16 @@ def main(image, gsd, reference_latitude, reference_longitude, included_species, 
     max_size = max(patch_height, patch_width)
     min_size = min(patch_height, patch_width)
     # define kwargs
-    kwargs = {
-        "rpn_pre_nms_top_n_test": 10000,
-        "rpn_post_nms_top_n_test": 10000,
-        "rpn_nms_thresh": 0.2,
-        "rpn_score_thresh": 0.01,
-        "box_score_thresh": box_score_thresh,
-        "box_nms_thresh": box_nms_thresh,
-        "box_detections_per_img": 1000,
-        "min_size": min_size,
-        "max_size": max_size}
+    kwargs = json.load(open("kwargs.json"))
+    kwargs["box_score_thresh"] = box_score_thresh
+    kwargs["box_nms_thresh"] = box_nms_thresh
+    kwargs["min_size"] = min_size
+    kwargs["max_size"] = max_size
     # create class filter
     class_filter = torch.zeros(len(index_to_class) + 1)
     class_filter[0] = 1
     for i in range(1, len(index_to_class) + 1):
-        species = index_to_class[i]
+        species = index_to_class[str(i)]
         if species in included_species:
             class_filter[i] = 1
     # create detection model
@@ -208,10 +203,14 @@ def main(image, gsd, reference_latitude, reference_longitude, included_species, 
     model = create_detection_model(index_to_class, model_path, device, kwargs, target_gsd, class_filter)
 
     # run detection model
-    boxes, class_scores, scores, labels = detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
+    boxes, scores, labels, class_scores = detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, scale)
+    # filter out boxes with less than min_pixel_area
+    area = torch.tensor([(box[2] - box[0]) * (box[3] - box[1]) for box in boxes])
+    inds = torch.where(area > min_pixel_area)
+    boxes, scores, labels, class_scores = boxes[inds], scores[inds].tolist(), labels[inds].tolist(), class_scores[inds].tolist()
 
     # draw boxes on images
-    labelled_scores = ["Bird: " + str(round(sum(class_scores[i]),2)) + "\n" + index_to_class[labels[i]] + ": " + str(round(scores[i], 2)) for i in range(len(scores))]
+    labelled_scores = ["Bird: " + str(round(sum(class_scores[i]),2)) + "\n" + index_to_class[str(labels[i])] + ": " + str(round(scores[i], 2)) for i in range(len(scores))]
     tensor_image = torchvision.transforms.PILToTensor()(image)
     labelled_image = draw_bounding_boxes(tensor_image, boxes, labelled_scores, colors = "blue", width = 2)
     labelled_image = torchvision.transforms.ToPILImage()(labelled_image)
@@ -221,22 +220,14 @@ def main(image, gsd, reference_latitude, reference_longitude, included_species, 
     
     return [labelled_image, "results.csv"]
 
-index_to_class = {
-    1: "Pacific Black Duck",
-    2: "Silver Gull",
-    3: "Pied Stilt",
-    4: "Gull-billed Tern",
-    5: "Bar-tailed Godwit",
-    6: "Australian Wood Duck",
-    7: "Masked Lapwing",
-    8: "Royal Spoonbill",
-    9: "Australian White Ibis"}
+index_to_class = json.load(open("index_to_class.json"))
 
 inputs = [
     gr.Image(type="pil", label="Orthomosaic"),
     gr.Number(value = 0.007, label="Ground Sampling Distance"),
     gr.Number(value = -27.44423, label="Latitude of top left corner"),
     gr.Number(value = 153.1816, label="Longitude of top left corner"),
+    gr.Number(value = 1000, label="Minimum Pixel Area of Detections"),
     gr.CheckboxGroup(
         choices = list(index_to_class.values()),
         value = list(index_to_class.values()), label = "Included Species"),
@@ -256,9 +247,8 @@ description = "This application determines the determines the GPS locatoin of bi
 
 # Add examples to Gradio Interface
 examples = [
-    [pathlib.Path('demo1.jpg').as_posix(), 0.005, -27.48388, 153.11551, list(index_to_class.values()), 0.7, 0.2, False],
-    [pathlib.Path('demo2.jpg').as_posix(), 0.005, -27.04474, 153.10526, list(index_to_class.values()), 0.7, 0.2, False],
-    [pathlib.Path('demo3.jpg').as_posix(), 0.007, -27.44423, 153.18161, list(index_to_class.values()), 0.7, 0.2, False]]
+    [pathlib.Path('demo1.jpg').as_posix(), 0.005, -27.48388, 153.11551, 1000, list(index_to_class.values()), 0.7, 0.2, False],
+    [pathlib.Path('demo2.jpg').as_posix(), 0.005, -27.04474, 153.10526, 1000, list(index_to_class.values()), 0.7, 0.2, False]]
 # Generate Gradio interface
 demo = gr.Interface(
     fn = main,

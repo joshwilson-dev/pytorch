@@ -21,6 +21,7 @@ from tkinter import messagebox
 import json
 from PIL import Image
 import piexif
+import re
 
 #################
 #### Content ####
@@ -124,10 +125,9 @@ if len(file_path_variable) > 0:
                             dji_xmp_keys = ['relativealtitude']
                             dji_xmp = {}
                             for key in dji_xmp_keys:
-                                search_str = (key + '="').encode("UTF-8")
-                                value_start = xmp_str.find(search_str) + len(search_str)
-                                value_end = xmp_str.find(b'"', value_start)
-                                value = xmp_str[value_start:value_end]
+                                search_str = (key).encode("UTF-8")
+                                value_start = xmp_str.find(search_str)
+                                value = re.search(b"(\-|\+)[0-9]+.[0-9]+", xmp_str[value_start:]).group(0)
                                 dji_xmp[key] = float(value.decode('UTF-8'))
                             height = dji_xmp["relativealtitude"]
                             print("\tGot height from xmp")

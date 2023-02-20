@@ -16,6 +16,7 @@ from torchvision.models.detection import roi_heads
 from torchvision.ops import boxes as box_ops
 import custom_roi_heads
 import custom_boxes
+import json
 
 # redefining roi_heads to return scores for all classes
 # and filter the classes based on a supplied filter
@@ -180,7 +181,7 @@ def get_args_parser(add_help=True):
 
     return parser
 
-def save_eval(results, output_file_name):
+def save_eval(results):
     #  catIds     - [all] K cat ids to use for evaluation
     #  iouThrs    - [.5:.05:.95] T=10 IoU thresholds for evaluation
     #  recThrs    - [0:.01:1] R=101 recall thresholds for evaluation
@@ -192,28 +193,41 @@ def save_eval(results, output_file_name):
     #  precision  - [TxRxKxAxM] precision for every evaluation setting
     #  recall     - [TxKxAxM] max recall for every evaluation setting
     #  score      - [TxRxKxAxM] score for every evaluation setting
-    iouThrs = results.coco_eval["bbox"].eval["params"].iouThrs
-    recThrs = results.coco_eval["bbox"].eval["params"].recThrs
-    catIds = results.coco_eval["bbox"].eval["params"].catIds
-    areaRng = results.coco_eval["bbox"].eval["params"].areaRng
-    maxDets = results.coco_eval["bbox"].eval["params"].maxDets
-    result_dict = {'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': []}
-    for iouThr_index in range(len(iouThrs)):
-        for recThr_index in range(len(recThrs)):
-            for catId_index in range(len(catIds)):
-                for area_index in range(len(areaRng)):
-                    for maxDet_index in range(len(maxDets)):
-                        result_dict['iouThr'].append(iouThrs[iouThr_index])
-                        result_dict['recThr'].append(recThrs[recThr_index])
-                        result_dict['catId'].append(catIds[catId_index])
-                        result_dict['area'].append(areaRng[area_index])
-                        result_dict['maxDet'].append(maxDets[maxDet_index])
-                        result_dict['precision'].append(results.coco_eval["bbox"].eval["precision"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
-                        result_dict['scores'].append(results.coco_eval["bbox"].eval["scores"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
-    with open(os.path.join(args.output_dir, output_file_name), "w", newline='') as outfile:
+    result_dict = {'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': [], 'useCats': []}
+    for result in results:
+        useCats = result["useCats"]
+        iouThrs = result["evaluator"].coco_eval["bbox"].eval["params"].iouThrs
+        recThrs = result["evaluator"].coco_eval["bbox"].eval["params"].recThrs
+        catIds = result["evaluator"].coco_eval["bbox"].eval["params"].catIds
+        areaRng = result["evaluator"].coco_eval["bbox"].eval["params"].areaRng
+        maxDets = result["evaluator"].coco_eval["bbox"].eval["params"].maxDets
+        for iouThr_index in range(len(iouThrs)):
+            for recThr_index in range(len(recThrs)):
+                for catId_index in range(len(catIds)):
+                    for area_index in range(len(areaRng)):
+                        for maxDet_index in range(len(maxDets)):
+                            result_dict['iouThr'].append(iouThrs[iouThr_index])
+                            result_dict['recThr'].append(recThrs[recThr_index])
+                            result_dict['catId'].append(catIds[catId_index])
+                            result_dict['area'].append(areaRng[area_index])
+                            result_dict['maxDet'].append(maxDets[maxDet_index])
+                            result_dict['precision'].append(result["evaluator"].coco_eval["bbox"].eval["precision"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
+                            result_dict['scores'].append(result["evaluator"].coco_eval["bbox"].eval["scores"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
+                            result_dict['useCats'].append(useCats)
+    with open(os.path.join(args.output_dir, "performance_metrics.csv"), "w", newline='') as outfile:
         writer = csv.writer(outfile)
         writer.writerow(result_dict.keys())
         writer.writerows(zip(*result_dict.values()))
+    return
+
+def save_eval_two(results):
+    result = list(filter(lambda d: d['useCats'] == 1, results))
+    res = [i for i in result["evaluator"].coco_eval["bbox"].evalImgs if i is not None]
+    keys = res[0].keys()
+    with open('performance_metrice_per_img.csv', 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, keys)
+        dict_writer.writeheader()
+        dict_writer.writerows(res)
     return
 
 def main(args):
@@ -233,7 +247,6 @@ def main(args):
     
     dataset, num_classes = get_dataset(args.dataset, "train", get_transform(True, args), args.data_path, args.numclasses)
     dataset_test, _ = get_dataset(args.dataset, "test", get_transform(False, args), args.data_path, args.numclasses)
-    
 
     print("Creating data loaders")
     if args.distributed:
@@ -348,15 +361,14 @@ def main(args):
 
     if args.test_only:
         torch.backends.cudnn.deterministic = True
-        results, supercat_results = evaluate(model, data_loader_test, device=device)
-        save_eval(results, "performance_metrics.csv")
-        save_eval(supercat_results, "supercat_performance_metrics.csv")
-  
-    from torch.utils.tensorboard import SummaryWriter
-    writer = SummaryWriter(log_dir = args.output_dir)
-    epochs_without_improvement = 0
-    lr_steps = 0
-    best_mARP = 0
+        results = evaluate(model, data_loader_test, device=device)
+        save_eval(results)
+    if not args.test_only:
+        from torch.utils.tensorboard import SummaryWriter
+        writer = SummaryWriter(log_dir = args.output_dir)
+        epochs_without_improvement = 0
+        lr_steps = 0
+        best_mARP = 0
 
     print("Start training")
     start_time = time.time()
@@ -375,24 +387,21 @@ def main(args):
             if args.amp:
                 checkpoint["scaler"] = scaler.state_dict()
 
-        results, supercat_results = evaluate(model, data_loader_test, device=device)
-        mAP = results.coco_eval["bbox"].stats[0]
-        mAR = results.coco_eval["bbox"].stats[8]
+        results = evaluate(model, data_loader_test, device=device)
+        result = list(filter(lambda d: d['useCats'] == 1, results))[0]
+        mAP = result["evaluator"].coco_eval["bbox"].stats[0]
+        mAR = result["evaluator"].coco_eval["bbox"].stats[8]
         mARP = (mAP + mAR) / 2
         writer.add_scalar("mAP", mAP, epoch)
         writer.add_scalar("mAR", mAR, epoch)
         writer.add_scalar("mARP", mARP, epoch)
-        utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
-        utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
-            
         if mARP > best_mARP:
             print("The model improved this epoch")
             # save best model and state dict
             print("Updating best model & results")
             utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
             utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
-            save_eval(results, "performance_metrics.csv")
-            save_eval(supercat_results, "supercat_performance_metrics.csv")
+            save_eval(results)
             best_mARP = mARP
             epochs_without_improvement = 0
         else:

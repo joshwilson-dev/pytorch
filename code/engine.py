@@ -8,6 +8,8 @@ import utils
 from coco_eval import CocoEvaluator
 from coco_utils import get_coco_api_from_dataset
 import copy
+from coco_eval import evaluate as coco_evaluate
+import numpy as np
 
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
@@ -82,12 +84,22 @@ def evaluate(model, data_loader, device):
 
     coco = get_coco_api_from_dataset(data_loader.dataset)
     iou_types = _get_iou_types(model)
-    supercat_coco = copy.deepcopy(coco)
-    for i in range(len(supercat_coco.anns)):
-        supercat_coco.anns[i + 1]["category_id"] = 1
-
     coco_evaluator = CocoEvaluator(coco, iou_types)
-    supercat_coco_evaluator = CocoEvaluator(supercat_coco, iou_types)
+
+    # update area ranges
+    min_dim = 0
+    max_dim = 10000
+    steps = 20
+    step_size = (max_dim - min_dim)/steps
+    dims = np.arange(min_dim, max_dim, step_size)
+    areaRng = [[0, 1e5 ** 2]] + [[dim, (dim + step_size)] for dim in dims]
+    areaRngLbl = ['all'] + [str(dim[1]) for dim in areaRng]
+    coco_evaluator.coco_eval["bbox"].params.areaRng = areaRng
+    coco_evaluator.coco_eval["bbox"].params.areaRngLbl = areaRngLbl
+
+    # copy the coco eval and set useCats to 0
+    coco_evaluator_useCats = copy.deepcopy(coco_evaluator)
+    coco_evaluator_useCats.coco_eval["bbox"].params.useCats = 0
 
     for images, targets in metric_logger.log_every(data_loader, 100, header):
         images = list(img.to(device) for img in images)
@@ -96,19 +108,14 @@ def evaluate(model, data_loader, device):
             torch.cuda.synchronize()
         model_time = time.time()
         outputs = model(images)
-        supercat_outputs = copy.deepcopy(outputs)
-
-        supercat_outputs[0]["labels"] = torch.ones(len(supercat_outputs[0]["labels"]))
-        supercat_outputs[0]["scores"] = torch.tensor([sum(class_scores) for class_scores in supercat_outputs[0]["class_scores"]])
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
         model_time = time.time() - model_time
 
         res = {target["image_id"].item(): output for target, output in zip(targets, outputs)}
-        supercat_res = {target["image_id"].item(): output for target, output in zip(targets, supercat_outputs)}
         evaluator_time = time.time()
         coco_evaluator.update(res)
-        supercat_coco_evaluator.update(supercat_res)
+        coco_evaluator_useCats.update(res)
         evaluator_time = time.time() - evaluator_time
         metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
@@ -116,12 +123,17 @@ def evaluate(model, data_loader, device):
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     coco_evaluator.synchronize_between_processes()
-    supercat_coco_evaluator.synchronize_between_processes()
+    coco_evaluator_useCats.synchronize_between_processes()
 
-    # accumulate predictions from all images
-    coco_evaluator.accumulate()
-    coco_evaluator.summarize()
-    supercat_coco_evaluator.accumulate()
-    supercat_coco_evaluator.summarize()
+    # accumulate predictions from all images with and without cats
+    results = []
+    for useCats in [1, 0]:
+        if useCats == 1:
+            evaluator = coco_evaluator
+        else: evaluator = coco_evaluator_useCats
+        evaluator.accumulate()
+        evaluator.summarize()
+        torch.set_num_threads(n_threads)
+        results.append({"useCats": useCats, "evaluator": copy.deepcopy(evaluator)})
     torch.set_num_threads(n_threads)
-    return coco_evaluator, supercat_coco_evaluator
+    return results
