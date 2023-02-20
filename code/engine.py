@@ -89,7 +89,7 @@ def evaluate(model, data_loader, device):
     # update area ranges
     min_dim = 0
     max_dim = 10000
-    steps = 10
+    steps = 20
     step_size = (max_dim - min_dim)/steps
     dims = np.arange(min_dim, max_dim, step_size)
     areaRng = [[0, 1e5 ** 2]] + [[dim, (dim + step_size)] for dim in dims]

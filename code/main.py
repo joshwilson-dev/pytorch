@@ -3,6 +3,7 @@ import json
 import math
 import csv
 import PIL
+import piexif
 import torch
 import torchvision
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
@@ -244,16 +245,24 @@ def main():
     gsd = 0.007029940836496699
     ref_latitude = -27.44423
     ref_longitude = 153.1816
-    index_to_class = [
-        "Pacific Black Duck_aves_adult_anseriformes_anatidae_anas_superciliosa",
-        "Silver Gull_aves_adult_charadriiformes_laridae_chroicocephalus_novaehollandiae",
-        "Pied Stilt_aves_adult_charadriiformes_recurvirostridae_himantopus_leucocephalus",
-        "Gull-billed Tern_aves_adult_charadriiformes_laridae_gelochelidon_nilotica",
-        "Bar-tailed Godwit_aves_adult_charadriiformes_scolopacidae_limosa_lapponica",
-        "Australian Wood Duck_aves_adult_anseriformes_anatidae_chenonetta_jubata",
-        "Masked Lapwing_aves_adult_charadriiformes_charadriidae_vanellus_miles",
-        "Royal Spoonbill_aves_adult_pelecaniformes_threskiornithidae_platalea_regia",
-        "Australian White Ibis_aves_adult_pelecaniformes_threskiornithidae_threskiornis_molucca"]
+    
+    # create detection model
+    device = torch.device("cuda")
+    model_path = os.path.join("./models/bird-detector")
+    kwargs = json.load(open(os.path.join(model_path, "kwargs.json")))
+    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
+    # update class filter
+    included_species = [
+  "Chinstrap Penguin_aves_adult_sphenisciformes_spheniscidae_pygoscelis_antarcticus",
+  "Australian Wood Duck_aves_adult_anseriformes_anatidae_chenonetta_jubata",
+  "Royal Spoonbill_aves_adult_pelecaniformes_threskiornithidae_platalea_regia",
+  "Masked Lapwing_aves_adult_charadriiformes_charadriidae_vanellus_miles",
+  "Silver Gull_aves_adult_charadriiformes_laridae_chroicocephalus_novaehollandiae",
+  "Gull-billed Tern_aves_adult_charadriiformes_laridae_gelochelidon_nilotica",
+  "Pied Oystercatcher_aves_adult_charadriiformes_haematopodidae_haematopus_longirostris",
+  "Australian White Ibis_aves_adult_pelecaniformes_threskiornithidae_threskiornis_molucca",
+  "Pied Stilt_aves_adult_charadriiformes_recurvirostridae_himantopus_leucocephalus",
+  "Pacific Black Duck_aves_adult_anseriformes_anatidae_anas_superciliosa"]
     # update model with new regional filter
     class_filter = torch.zeros(len(index_to_class) + 1)
     class_filter[0] = 1
@@ -261,12 +270,6 @@ def main():
         species = index_to_class[str(i)]
         if species in included_species:
             class_filter[i] = 1
-
-    # create detection model
-    device = torch.device("cuda")
-    model_path = os.path.join("./models/bird-detector")
-    kwargs = json.load(open(os.path.join(model_path, "kwargs.txt")))
-    index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
     model = create_detection_model(index_to_class, model_path, device, kwargs, target_gsd, class_filter)
 
     for file in os.listdir("./images"):
@@ -276,6 +279,10 @@ def main():
             image_path = os.path.join("./images", file)
             image = PIL.Image.open(image_path)
             image_width, image_height = image.size
+            # calculate new gsd
+            exif_dict = piexif.load(image.info['exif'])
+            comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
+            gsd = float(comments["gsd"])
             # detect birds
             boxes, scores = detect_birds(kwargs, image_path, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
             # create label file

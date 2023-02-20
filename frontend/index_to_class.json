@@ -1,10 +1,13 @@
 {
-    "1": "Pacific Black Duck",
-    "2": "Silver Gull",
-    "3": "Pied Stilt",
-    "4": "Gull-billed Tern",
-    "5": "Bar-tailed Godwit",
-    "6": "Australian Wood Duck",
-    "7": "Masked Lapwing",
-    "8": "Royal Spoonbill",
-    "9": "Australian White Ibis"}
+  "1": "Chinstrap Penguin_aves_adult_sphenisciformes_spheniscidae_pygoscelis_antarcticus",
+  "2": "Gentoo Penguin_aves_adult_sphenisciformes_spheniscidae_pygoscelis_papua",
+  "3": "Australian Wood Duck_aves_adult_anseriformes_anatidae_chenonetta_jubata",
+  "4": "Pacific Black Duck_aves_adult_anseriformes_anatidae_anas_superciliosa",
+  "5": "Masked Lapwing_aves_adult_charadriiformes_charadriidae_vanellus_miles",
+  "6": "Australian White Ibis_aves_adult_pelecaniformes_threskiornithidae_threskiornis_molucca",
+  "7": "Australian Pelican_aves_adult_pelecaniformes_pelecanidae_pelecanus_conspicillatus",
+  "8": "Pied Stilt_aves_adult_charadriiformes_recurvirostridae_himantopus_leucocephalus",
+  "9": "Royal Spoonbill_aves_adult_pelecaniformes_threskiornithidae_platalea_regia",
+  "10": "Silver Gull_aves_adult_charadriiformes_laridae_chroicocephalus_novaehollandiae",
+  "11": "Gull-billed Tern_aves_adult_charadriiformes_laridae_gelochelidon_nilotica"
+}

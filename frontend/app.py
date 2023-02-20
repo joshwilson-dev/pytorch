@@ -49,8 +49,7 @@ def create_detection_model(index_to_class, model_path, device, kwargs, target_gs
     return model
 
 # function to prepare image for detection with patching to fit in GPU
-def prepare_image_for_detection(image, overlap, patch_width, patch_height, gsd, target_gsd):
-    scale = target_gsd/gsd
+def prepare_image_for_detection(image, overlap, patch_width, patch_height, scale):
     width, height = image.size
     width = int(width / scale)
     height = int(height / scale)
@@ -75,11 +74,11 @@ def prepare_image_for_detection(image, overlap, patch_width, patch_height, gsd, 
             batch.append(patch)
     dim = torch.Tensor(0, 3, patch_height, patch_width)
     batch = torch.cat(batch, out=dim)
-    return batch, pad_width, pad_height, n_crops_height, n_crops_width, scale
+    return batch, pad_width, pad_height, n_crops_height, n_crops_width
 
 # perform detection
-def detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd):
-    batch, pad_width, pad_height, n_crops_height, n_crops_width, scale = prepare_image_for_detection(image, overlap, patch_width, patch_height, gsd, target_gsd)
+def detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, scale):
+    batch, pad_width, pad_height, n_crops_height, n_crops_width = prepare_image_for_detection(image, overlap, patch_width, patch_height, scale)
     max_batch_size = 15
     batch_length = batch.size()[0]
     sub_batch_lengths = [max_batch_size] * math.floor(batch_length/max_batch_size)
@@ -133,10 +132,10 @@ def detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_wi
             labels = torch.cat((labels, batch_labels.to(torch.device("cpu"))), 0)
     nms_indices = box_ops.batched_nms(boxes, scores, labels, kwargs["box_nms_thresh"])
     boxes = boxes[nms_indices]
-    scores = scores[nms_indices].tolist()
-    class_scores = class_scores[nms_indices].tolist()
-    labels = labels[nms_indices].tolist()
-    return boxes, class_scores, scores, labels
+    scores = scores[nms_indices]
+    class_scores = class_scores[nms_indices]
+    labels = labels[nms_indices]
+    return boxes, scores, labels, class_scores
 
 # Calculate the GPS of each bird based on pixel co-ordinates
 def calculate_gps(ref_latitude, ref_longitude, dx, dy):
@@ -165,7 +164,7 @@ def create_csv(boxes, class_scores, labels, index_to_class, ref_latitude, ref_lo
             writer.writerow(row)
     return
 
-def main(image, gsd, reference_latitude, reference_longitude, included_species, box_score_thresh, box_nms_thresh, gpu):  
+def main(image, gsd, reference_latitude, reference_longitude, min_pixel_area, included_species, box_score_thresh, box_nms_thresh, gpu):  
     if os.path.exists("results.csv"):
         os.remove("results.csv")
     # Define constants
@@ -204,7 +203,11 @@ def main(image, gsd, reference_latitude, reference_longitude, included_species, 
     model = create_detection_model(index_to_class, model_path, device, kwargs, target_gsd, class_filter)
 
     # run detection model
-    boxes, class_scores, scores, labels = detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, gsd, target_gsd)
+    boxes, scores, labels, class_scores = detect_birds(kwargs, image, model, device, index_to_class, overlap, patch_width, patch_height, reject, scale)
+    # filter out boxes with less than min_pixel_area
+    area = torch.tensor([(box[2] - box[0]) * (box[3] - box[1]) for box in boxes])
+    inds = torch.where(area > min_pixel_area)
+    boxes, scores, labels, class_scores = boxes[inds], scores[inds].tolist(), labels[inds].tolist(), class_scores[inds].tolist()
 
     # draw boxes on images
     labelled_scores = ["Bird: " + str(round(sum(class_scores[i]),2)) + "\n" + index_to_class[str(labels[i])] + ": " + str(round(scores[i], 2)) for i in range(len(scores))]
@@ -224,6 +227,7 @@ inputs = [
     gr.Number(value = 0.007, label="Ground Sampling Distance"),
     gr.Number(value = -27.44423, label="Latitude of top left corner"),
     gr.Number(value = 153.1816, label="Longitude of top left corner"),
+    gr.Number(value = 1000, label="Minimum Pixel Area of Detections"),
     gr.CheckboxGroup(
         choices = list(index_to_class.values()),
         value = list(index_to_class.values()), label = "Included Species"),
@@ -243,8 +247,8 @@ description = "This application determines the determines the GPS locatoin of bi
 
 # Add examples to Gradio Interface
 examples = [
-    [pathlib.Path('demo1.jpg').as_posix(), 0.005, -27.48388, 153.11551, list(index_to_class.values()), 0.7, 0.2, False],
-    [pathlib.Path('demo2.jpg').as_posix(), 0.005, -27.04474, 153.10526, list(index_to_class.values()), 0.7, 0.2, False]]
+    [pathlib.Path('demo1.jpg').as_posix(), 0.005, -27.48388, 153.11551, 1000, list(index_to_class.values()), 0.7, 0.2, False],
+    [pathlib.Path('demo2.jpg').as_posix(), 0.005, -27.04474, 153.10526, 1000, list(index_to_class.values()), 0.7, 0.2, False]]
 # Generate Gradio interface
 demo = gr.Interface(
     fn = main,
