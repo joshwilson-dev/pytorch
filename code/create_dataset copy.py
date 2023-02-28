@@ -47,7 +47,7 @@ def search_for_file_path ():
         print ("You chose: %s" % tempdir)
     return tempdir
 
-def crop_mask(im, points, label):
+def crop_mask(im, points):
     # convrt points to tuple
     polygon = [tuple(l) for l in points]
     # find bounding box
@@ -63,12 +63,12 @@ def crop_mask(im, points, label):
     centre_y = min_y + (max_y - min_y) / 2
     origin = [(centre_x - size/2, centre_y - size/2)] * len(polygon)
     crop_corners = (centre_x - size/2, centre_y - size/2, centre_x + size/2, centre_y + size/2)
-    bird = im.crop(crop_corners).convert('RGBA')
+    instance = im.crop(crop_corners).convert('RGBA')
     # adjust polygon to crop origin
     polygon = tuple(tuple(a - b for a, b in zip(tup1, tup2))\
         for tup1, tup2 in zip(polygon, origin))
     # convert to numpy (for convenience)
-    imArray = np.asarray(bird)
+    imArray = np.asarray(instance)
     # crop out the mask
     maskIm = Image.new('L', (imArray.shape[1], imArray.shape[0]), 0)
     ImageDraw.Draw(maskIm).polygon(polygon, outline=1, fill=1)
@@ -81,12 +81,6 @@ def crop_mask(im, points, label):
     newImArray[:,:,3] = mask*255
     # back to Image from numpy
     mask = Image.fromarray(newImArray, "RGBA")
-    # # save mask
-    # mask_root = os.path.join("dataset/instances/", label)
-    # if not os.path.exists(mask_root):
-    #     os.mkdir(mask_root)
-    # mask_path = os.path.join(mask_root, hashlib.md5(mask.tobytes()).hexdigest() + ".png")
-    # mask.save(mask_path)
     return mask, polygon
 
 def blackout_instance(image, box):
@@ -105,7 +99,7 @@ def balance_instances(df, max_instances_class, ratio):
     row_selection = [model.NewBoolVar(f'{i}') for i in range(df.shape[0])]
     # Number of instances for each class should be less than class_threshold
     for column in df.columns:
-        if "aves" in column:
+        if "seed" in column:
             model.Add(df[column].dot(row_selection) <= math.floor(min(ratio * df[column].sum(), max_instances_class)))
     # Maximise the number of imaes
     model.Maximize(pd.Series([1]*len(df)).dot(row_selection))
@@ -126,18 +120,16 @@ def transforms(instance, mask, gsd, target_gsd, instance_area, min_pixel_area, m
     min_transform = 0.75
     max_transform = 1.25
     # quality
-    min_scale = min_pixel_area/instance_area
-    max_scale = max_pixel_area/instance_area
-    intermediate_scale = random.uniform(min_scale, max_scale)
-    intermediate_size = tuple(int(dim * math.sqrt(intermediate_scale)) for dim in instance.size)
-    target_scale = gsd/target_gsd
-    target_size = tuple(int(dim * target_scale) for dim in instance.size)
-    instance = instance.resize(intermediate_size)
-    instance = instance.resize(target_size)
-    intermediate_area = intermediate_size[0]*intermediate_size[1]
-    if intermediate_area < instance_area:
-        instance_area = intermediate_area
-    mask = [[point[0] * target_scale, point[1] * target_scale] for point in mask]
+    # min_scale = min_pixel_area/instance_area
+    # max_scale = max_pixel_area/instance_area
+    # intermediate_scale = random.uniform(min_scale, max_scale)
+    # intermediate_size = tuple(int(dim * math.sqrt(intermediate_scale)) for dim in instance.size)
+    # target_scale = gsd/target_gsd
+    # target_size = tuple(int(dim * target_scale) for dim in instance.size)
+    # instance = instance.resize(intermediate_size)
+    # instance = instance.resize(target_size)
+    # instance_area = intermediate_size[0]*intermediate_size[1]
+    # mask = [[point[0] * target_scale, point[1] * target_scale] for point in mask]
     # colour
     colour = random.uniform(min_transform, max_transform)
     instance = ImageEnhance.Color(instance)
@@ -157,9 +149,9 @@ def transforms(instance, mask, gsd, target_gsd, instance_area, min_pixel_area, m
         instance = instance.rotate(rotation)
         mask = [rotate_point(point, centre, -rotation) for point in mask]
     # poly crop
-    poly_prob = random.uniform(0, 1)
-    if poly_prob > 0.95:
-        instance = cut_polygon(instance)
+    # poly_prob = random.uniform(0, 1)
+    # if poly_prob > 0.95:
+    #     instance = cut_polygon(instance)
     return instance, mask, instance_area
 
 def cut_polygon(instance):
@@ -277,7 +269,7 @@ def save_dataset(train, test):
                             coco_category = {
                                 "id": category_id,
                                 "name": instance["instance_class"],
-                                "supercategory": "Bird"}
+                                "supercategory": "Seed"}
                             coco_categories.append(coco_category)
                         coco_instance_id += 1
                         coco_annotation = {
@@ -303,9 +295,9 @@ def save_dataset(train, test):
                         location = (positions[index][0], positions[index][1])
                         # paste shadow under bird
                         patch_object = patch_object.convert("RGBA")
-                        if random.uniform(0, 1) < 0.3:
-                            shadow = create_shadow(instance_object)
-                            patch_object.paste(shadow, location, shadow)
+                        # if random.uniform(0, 1) < 0.3:
+                        #     shadow = create_shadow(instance_object)
+                        #     patch_object.paste(shadow, location, shadow)
                         patch_object.paste(instance_object, location, instance_object)
                         patch_object = patch_object.convert("RGB")
                 # determine name of patch
@@ -338,8 +330,7 @@ def save_dataset(train, test):
         if dir == "test":
             index_to_class = {}
             for category in coco["categories"]:
-                category_info = {"label": category["name"], "min_area": 0, "max_area": 20000}
-                index_to_class[category["id"]] = category_info
+                index_to_class[category["id"]] = category["name"]
             with open('dataset/annotations/index_to_class.json', 'w') as file:
                 file.write(json.dumps(index_to_class, indent = 2))
         # save coco
@@ -367,7 +358,7 @@ if len(file_path_variable) > 0:
         target_gsd = 0.005
         min_pixel_area = 500
         max_pixel_area = 10000
-        min_polygons_class = 100
+        min_polygons_class = 10
         max_instances_class = 10000
         train_test_ratio = 0.25
         max_instances_class_test = max_instances_class * train_test_ratio
@@ -401,7 +392,8 @@ if len(file_path_variable) > 0:
 
                     # get the gsd
                     try:
-                        image_gsd = annotation["gsd"]
+                        # image_gsd = annotation["gsd"]
+                        image_gsd = 0.005
                     except:
                         print("NO GSD")
 
@@ -455,7 +447,7 @@ if len(file_path_variable) > 0:
                                 # create instance polygon
                                 instance_poly = Polygon(instance_mask)
 
-                                # determine area
+                                # determine box
                                 instance_area = instance_poly.area
 
                                 # check if polygon is in patch
@@ -469,7 +461,7 @@ if len(file_path_variable) > 0:
                                 
                                 if shape["shape_type"] == "polygon":
                                     # get the instance object
-                                    instance_object, instance_crop = crop_mask(image, shape["points"], shape["label"])
+                                    instance_object, instance_crop = crop_mask(image, shape["points"])
                                 else:
                                     instance_object = "null"
                                     instance_crop = "null"
