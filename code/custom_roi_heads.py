@@ -1,9 +1,8 @@
+import torch
 import torch.nn.functional as F
 from torchvision.ops import boxes as box_ops
-import torch
-from torchvision.models.detection import roi_heads
+from torchvision.models.detection.roi_heads import fastrcnn_loss, maskrcnn_loss, maskrcnn_inference, keypointrcnn_loss, keypointrcnn_inference
 
-# update box ops?
 
 def postprocess_detections(
     self,
@@ -120,7 +119,7 @@ def forward(
             raise ValueError("labels cannot be None")
         if regression_targets is None:
             raise ValueError("regression_targets cannot be None")
-        loss_classifier, loss_box_reg = roi_heads.fastrcnn_loss(class_logits, box_regression, labels, regression_targets)
+        loss_classifier, loss_box_reg = fastrcnn_loss(class_logits, box_regression, labels, regression_targets)
         losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
     else:
         boxes, scores, labels, class_scores = self.postprocess_detections(class_logits, box_regression, proposals, image_shapes)

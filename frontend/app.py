@@ -34,11 +34,12 @@ def create_detection_model(common_name, model_path, device, kwargs, target_gsd, 
     box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
     # Create new anchors
     min_bird_size = 25
-    max_bird_size = 125
+    max_bird_size = 225
     step_size = int(((max_bird_size - min_bird_size)/4))
     anchor_sizes = list(range(min_bird_size, max_bird_size + step_size, step_size))
     anchor_sizes = tuple((size / (target_gsd * 100),) for size in anchor_sizes)
     aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
+    print(anchor_sizes)
     rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
     kwargs["rpn_anchor_generator"] = rpn_anchor_generator
     # Create model
@@ -140,14 +141,15 @@ def detect_birds(kwargs, image, model, device, common_name, overlap, patch_width
     return boxes, scores, labels, class_scores
 
 def size_filters(boxes, scores, labels, class_scores, min_pixel_area, scale):
-    areas = torch.tensor([(box[2] - box[0]) * (box[3] - box[1]) for box in boxes])
+    areas = torch.tensor([(box[2] - box[0]) * (box[3] - box[1]) / scale for box in boxes])
     min_areas = []
     max_areas = []
     for label in labels:
-        min_areas.append(index_to_class[str(label.item())]["min_area"] * scale)
-        max_areas.append(index_to_class[str(label.item())]["max_area"] * scale)
+        min_areas.append(index_to_class[str(label.item())]["min_area"])
+        max_areas.append(index_to_class[str(label.item())]["max_area"])
     min_areas = torch.tensor(min_areas)
     max_areas = torch.tensor(max_areas)
+    print("areas", areas)
     inds = torch.where((areas > min_pixel_area) & (areas > min_areas) & (areas < max_areas))
     boxes, scores, labels, class_scores = boxes[inds], scores[inds], labels[inds], class_scores[inds]
     return boxes, scores, labels, class_scores
@@ -243,7 +245,7 @@ def main(gpu, image, gsd, ref_latitude, ref_longitude, min_pixel_area, box_score
     for i in range(len(taxons["common_name"])):
         species = taxons["common_name"][i]
         if species in included_species:
-            class_filter[i] = 1
+            class_filter[i + 1] = 1
     # create detection model
     model_path = "./model_best_state_dict.pth"
     model = create_detection_model(taxons["common_name"], model_path, device, kwargs, target_gsd, class_filter)

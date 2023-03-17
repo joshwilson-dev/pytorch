@@ -282,17 +282,16 @@ def main(args):
     if args.custommodel == 1:
         target_gsd = 0.005
         min_instance_size = 25
-        max_instance_size = 125
+        max_instance_size = 245
         step_size = int(((max_instance_size - min_instance_size)/4))
         anchor_sizes = list(range(min_instance_size, max_instance_size + step_size, step_size))
         anchor_sizes = tuple((size / (target_gsd * 100),) for size in anchor_sizes)
-        print(anchor_sizes)
+        print("Anchor Sizes: ", anchor_sizes)
         aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
         rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
         kwargs = {"rpn_anchor_generator": rpn_anchor_generator}
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
-        box_predictor = torchvision.models.detection.faster_rcnn.FastRCNNPredictor(backbone.out_channels * 4, num_classes)
-        model = torchvision.models.detection.__dict__[args.model](box_predictor = box_predictor, backbone = backbone, **kwargs)
+        model = torchvision.models.detection.__dict__[args.model](backbone = backbone, num_classes = num_classes, **kwargs)
     else:
         kwargs = {"trainable_backbone_layers": args.trainable_backbone_layers}
         if args.data_augmentation in ["multiscale", "lsj"]:
