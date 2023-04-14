@@ -44,7 +44,7 @@ file_path_variable = search_for_file_path()
 label_dict = {
     "{'name': 'Masked Lapwing', 'class': 'aves', 'order': '', 'family': '', 'genus': '', 'species': '', 'age': 'adult'}": "{'name': 'Masked Lapwing', 'class': 'aves', 'order': 'charadriiformes', 'family': 'charadriidae', 'genus': 'vanellus', 'species': 'miles', 'age': 'adult'}"
 }
-
+poses = ["flying", "preening", "resting", "lying"]
 # did the user select a dir or cancel?
 if len(file_path_variable) > 0:
     # confirm dir with user
@@ -61,13 +61,18 @@ if len(file_path_variable) > 0:
                     annotation = json.load(open(annotation_path))
                     print("Renaming instances in", file)
                     for i in range(len(annotation["shapes"])):
-                        old_label = annotation["shapes"][i]["label"]
-                        try:
-                            new_label = label_dict[old_label]
-                        except:
-                            print(old_label, "not in label dictionary")
-                            continue
-                        annotation["shapes"][i]["label"] = new_label
+                        label = json.loads(annotation["shapes"][i]["label"].replace("'", '"'))
+                        # if label["pose"] not in poses and annotation["shapes"][i]["shape_type"] == "polygon":
+                        #     print("Bad pose", file)
+                        if "'pose': 'unknown'" in annotation["shapes"][i]["label"]:
+                            annotation["shapes"][i]["label"] = annotation["shapes"][i]["label"].replace("'pose': 'unknown'", "'pose': 'resting'")
+                        # old_label = annotation["shapes"][i]["label"]
+                        # try:
+                        #     new_label = label_dict[old_label]
+                        # except:
+                        #     print(old_label, "not in label dictionary")
+                        #     continue
+                        # annotation["shapes"][i]["label"] = new_label
                     annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
                     with open(annotation_path, 'w') as annotation_file:
                         annotation_file.write(annotation_str)

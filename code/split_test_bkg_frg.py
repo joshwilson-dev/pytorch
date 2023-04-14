@@ -56,14 +56,15 @@ if len(file_path_variable) > 0:
             os.makedirs(path)
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
-            for file in files:
-                if file.endswith(".json"):
-                    annotation_path = os.path.join(root, file)
-                    annotation = json.load(open(annotation_path))
-                    image_path = os.path.join(root, annotation["imagePath"])
-                    if len(annotation["shapes"]) == 0:
-                        shutil.copy(annotation_path, os.path.join(paths[0], file))
-                        shutil.copy(image_path, os.path.join(paths[0], annotation["imagePath"]))
-                    else:
-                        shutil.copy(annotation_path, os.path.join(paths[1], file))
-                        shutil.copy(image_path, os.path.join(paths[1], annotation["imagePath"]))
+            if 'images' not in root:
+                for file in files:
+                    if file.endswith(".json"):
+                        annotation_path = os.path.join(root, file)
+                        annotation = json.load(open(annotation_path))
+                        image_path = os.path.join(root, annotation["imagePath"])
+                        if len(annotation["shapes"]) == 0:
+                            shutil.copy(annotation_path, os.path.join(paths[0], file))
+                            shutil.copy(image_path, os.path.join(paths[0], annotation["imagePath"]))
+                        else:
+                            shutil.copy(annotation_path, os.path.join(paths[1], file))
+                            shutil.copy(image_path, os.path.join(paths[1], annotation["imagePath"]))

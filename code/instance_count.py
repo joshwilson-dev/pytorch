@@ -48,7 +48,7 @@ if len(file_path_variable) > 0:
     if check =="yes":
         os.chdir(file_path_variable)
         # create dictionaries to store data
-        dataset_keys = ["image_path", "instance_class", "instance_shape_type"]
+        dataset_keys = ["Image Path", "Common Name", "Scientific Name", "Age", "Pose", "Shape Type"]
         data = {k:[] for k in dataset_keys}
         # iterate through images
         for root, dirs, files in os.walk(os.getcwd()):
@@ -61,34 +61,48 @@ if len(file_path_variable) > 0:
                     annotation = json.load(open(annotation_path))
                     instance_in_patch = False
                     for shape in annotation["shapes"]:
-                        # save instance to temp data
-                        data["image_path"].append(file)
-                        data["instance_class"].append(shape["label"])
-                        data["instance_shape_type"].append(shape["shape_type"])
-                        instance_in_patch = True
                         label = json.loads(shape["label"].replace("'", '"'))
-                        if label["name"] == "Masked Lapwing" and label["order"] == '':
+                        common_name = label["name"]
+                        scientific_name = label["genus"].capitalize() + " " + label["species"]
+                        age = label["age"]
+                        pose = label["pose"]
+                        # save instance to temp data
+                        data["Image Path"].append(file)
+                        data["Common Name"].append(common_name)
+                        data["Scientific Name"].append(scientific_name)
+                        data["Age"].append(age)
+                        data["Pose"].append(pose)
+                        data["Shape Type"].append(shape["shape_type"])
+                        instance_in_patch = True
+                        if shape["shape_type"] == "rectangle":
                             print(file)
                     # if there was no instances in the patch add it as background
                     if instance_in_patch == False:
-                        data["image_path"].append(file)
-                        data["instance_class"].append("background")
-                        data["instance_shape_type"].append("null")
+                        data["Image Path"].append(file)
+                        data["Common Name"].append("background")
+                        data["Scientific Name"].append("background")
+                        data["Age"].append("background")
+                        data["Pose"].append("background")
+                        data["Shape Type"].append("background")
 
         # convert dictionary to dataframe
         data = pd.DataFrame(data=data)
-        # class abundance
-        total_class_count = (
+        # Image Count
+        print(len(data["Image Path"].unique()))
+        # Fine Count
+        fine_instance_summary = (
             data
-            .instance_class
-            .value_counts())
-        print("\tClass Count:\n{}\n".format(total_class_count))
-        # polygon abundance
-        polygon_class_count = (
+            .drop(["Image Path"], axis=1)
+            .value_counts()
+            .reset_index(name = "Instances")
+            .sort_values(by=['Common Name', "Age", "Pose", "Shape Type"]))
+        # Coarse Count
+        coarse_instance_summary = (
             data
-            .query("instance_shape_type == 'polygon'")
-            .instance_class
-            .value_counts())
-        print("\tPolygon Class Count:\n{}\n".format(polygon_class_count))
-        for name in data["instance_class"].unique():
-            print(name)
+            .drop(["Image Path", "Pose", "Shape Type"], axis=1)
+            .value_counts()
+            .reset_index(name = "Instances")
+            .sort_values(by=["Common Name", "Age"]))
+        # save data to csv
+        fine_instance_summary.to_csv('Fine_Instance_Summary.csv', index=False)
+        coarse_instance_summary.to_csv('Coarse_Instance_Summary.csv', index=False)
