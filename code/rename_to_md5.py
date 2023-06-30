@@ -16,7 +16,7 @@ import json
 import tkinter
 from tkinter import filedialog
 from tkinter import messagebox
-
+from PIL import Image
 #################
 #### Content ####
 #################
@@ -49,28 +49,38 @@ if len(file_path_variable) > 0:
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
                 if file.endswith(".JPG"):
-                    # calculate md5 and rename image
-                    image_path = os.path.join(root, file)
-                    hash_md5 = hashlib.md5()
-                    with open(image_path, "rb") as f:
-                        for chunk in iter(lambda: f.read(4096), b""):
-                            hash_md5.update(chunk)
-                    output = hash_md5.hexdigest()
-                    image_output = os.path.join(root, output + ".JPG")
-                    os.rename(image_path, image_output)
-                    # rename associated annotation file if it exists
-                    annotation_file = os.path.splitext(file)[0] + ".json"
-                    if os.path.isfile(annotation_file):
-                        annotation_output = os.path.join(root, output + ".json")
-                        os.rename(annotation_file, annotation_output)
 
-        # update annotation file to point to new name
-        for root, dirs, files in os.walk(os.getcwd()):
-            for file in files:
-                if file.endswith(".json"):
-                    file_path = os.path.join(root, file)
-                    with open(file_path, 'r') as f:
-                        data = json.load(f)
-                        data["imagePath"] = os.path.splitext(file)[0] + '.JPG'
-                    with open(file_path, 'w') as f:
-                        json.dump(data, f, indent=2)
+                    # Inputs
+                    image_input_name = file
+                    image_input_path = os.path.join(root, image_input_name)
+                    annotation_input_name = os.path.splitext(image_input_name)[0] + ".json"
+                    annotation_input_path = os.path.join(root, annotation_input_name)
+
+                    # Calculate md5
+                    image = Image.open(image_input_path)
+                    md5 = hashlib.md5(image.tobytes()).hexdigest()
+
+                    # Outputs
+                    image_output_name = md5 + ".jpg"
+                    image_output_path = os.path.join(root, image_output_name)
+                    annotation_output_name = md5 + ".json"
+                    annotation_output_path = os.path.join(root, annotation_output_name)
+
+                    # Update image name
+                    image.close()
+                    os.rename(image_input_path, image_output_path)
+                    
+                    # Check for annotation file
+                    if os.path.isfile(annotation_input_name):
+
+                        # Rename annotation
+                        os.rename(annotation_input_path, annotation_output_path)
+
+                        # Update annotation
+                        annotation = json.load(open(annotation_output_path))
+                        annotation["imagePath"] = image_output_name
+                        annotation = json.dumps(annotation, indent = 2)
+
+                        # Write annotation
+                        with open(annotation_output_path, 'w') as annotation_file:
+                            annotation_file.write(annotation)

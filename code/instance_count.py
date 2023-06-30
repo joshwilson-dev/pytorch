@@ -54,36 +54,40 @@ if len(file_path_variable) > 0:
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
                 if file.endswith(".json"):
-                    # print("Recording Patch Data From: ", file)
-                    # load the annotation
-                    annotation_name = file
-                    annotation_path = os.path.join(root, annotation_name)
-                    annotation = json.load(open(annotation_path))
-                    instance_in_patch = False
-                    for shape in annotation["shapes"]:
-                        label = json.loads(shape["label"].replace("'", '"'))
-                        common_name = label["name"]
-                        scientific_name = label["genus"].capitalize() + " " + label["species"]
-                        age = label["age"]
-                        pose = label["pose"]
-                        # save instance to temp data
-                        data["Image Path"].append(file)
-                        data["Common Name"].append(common_name)
-                        data["Scientific Name"].append(scientific_name)
-                        data["Age"].append(age)
-                        data["Pose"].append(pose)
-                        data["Shape Type"].append(shape["shape_type"])
-                        instance_in_patch = True
-                        if shape["shape_type"] == "rectangle":
-                            print(file)
-                    # if there was no instances in the patch add it as background
-                    if instance_in_patch == False:
-                        data["Image Path"].append(file)
-                        data["Common Name"].append("background")
-                        data["Scientific Name"].append("background")
-                        data["Age"].append("background")
-                        data["Pose"].append("background")
-                        data["Shape Type"].append("background")
+                    # if 'fully annotated' in root or 'partially annotated' in root:
+                        print("Recording Patch Data From: ", root, file)
+                        # load the annotation
+                        annotation_name = file
+                        annotation_path = os.path.join(root, annotation_name)
+                        annotation = json.load(open(annotation_path))
+                        instance_in_patch = False
+                        for shape in annotation["shapes"]:
+                            try:
+                                label = json.loads(shape["label"].replace("'", '"'))
+                            except:
+                                print(shape["label"])
+                                import sys
+                                sys.exit("here")
+                            common_name = label["name"]
+                            scientific_name = label["genus"].capitalize() + " " + label["species"]
+                            age = label["age"]
+                            pose = label["pose"]
+                            # save instance to temp data
+                            data["Image Path"].append(file)
+                            data["Common Name"].append(common_name)
+                            data["Scientific Name"].append(scientific_name)
+                            data["Age"].append(age)
+                            data["Pose"].append(pose)
+                            data["Shape Type"].append(shape["shape_type"])
+                            instance_in_patch = True
+                        # if there was no instances in the patch add it as background
+                        if instance_in_patch == False:
+                            data["Image Path"].append(file)
+                            data["Common Name"].append("background")
+                            data["Scientific Name"].append("background")
+                            data["Age"].append("background")
+                            data["Pose"].append("background")
+                            data["Shape Type"].append("background")
 
         # convert dictionary to dataframe
         data = pd.DataFrame(data=data)

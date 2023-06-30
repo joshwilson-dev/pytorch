@@ -14,19 +14,17 @@ the number of epochs should be adapted so that we have the same number of iterat
 """
 from torchvision.models.detection import roi_heads
 from torchvision.ops import boxes as box_ops
-import custom_roi_heads
-import custom_boxes
+from custom_roi_heads import postprocess_detections, forward
+from custom_boxes import batched_nms, _batched_nms_coordinate_trick
 
 # redefining roi_heads to return scores for all classes
 # and filter the classes based on a supplied filter
-roi_heads.RoIHeads.postprocess_detections = custom_roi_heads.postprocess_detections
-roi_heads.RoIHeads.forward = custom_roi_heads.forward
+roi_heads.RoIHeads.postprocess_detections = postprocess_detections
+roi_heads.RoIHeads.forward = forward
 
 # redefining boxes to do nms on all classes, not class specific
-box_ops.batched_nms = custom_boxes.batched_nms
-box_ops._batched_nms_coordinate_trick = custom_boxes._batched_nms_coordinate_trick
-
-
+box_ops.batched_nms = batched_nms
+box_ops._batched_nms_coordinate_trick = _batched_nms_coordinate_trick
 
 import datetime
 import os
@@ -194,17 +192,17 @@ def save_eval(results):
     #  score      - [TxRxKxAxM] score for every evaluation setting
     result_dict = {'iou_type': [], 'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': []}
     for result in results:
-        for iou_type in result['evaluator'].iou_types:
+        for iou_type in ["bbox"]:#result['evaluator'].iou_types:
             iouThrs = result["evaluator"].coco_eval[iou_type].eval["params"].iouThrs
             recThrs = result["evaluator"].coco_eval[iou_type].eval["params"].recThrs
             catIds = result["evaluator"].coco_eval[iou_type].eval["params"].catIds
             areaRng = result["evaluator"].coco_eval[iou_type].eval["params"].areaRng
             maxDets = result["evaluator"].coco_eval[iou_type].eval["params"].maxDets
-            for iouThr_index in range(len(iouThrs)):
+            for iouThr_index in [0]:# range(len(iouThrs)):
                 for recThr_index in range(len(recThrs)):
                     for catId_index in range(len(catIds)):
                         for area_index in range(len(areaRng)):
-                            for maxDet_index in range(len(maxDets)):
+                            for maxDet_index in [-1]:#range(len(maxDets)):
                                 result_dict['iouThr'].append(iouThrs[iouThr_index])
                                 result_dict['recThr'].append(recThrs[recThr_index])
                                 result_dict['catId'].append(catIds[catId_index])
@@ -269,7 +267,10 @@ def main(args):
     print("Creating model")
 
     if args.custommodel == 1:
-        kwargs = {}
+        kwargs = {
+            "min_size": 1300,
+            "max_size": 1300
+        }
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         model = torchvision.models.detection.__dict__[args.model](backbone = backbone, num_classes = num_classes, **kwargs)
     else:

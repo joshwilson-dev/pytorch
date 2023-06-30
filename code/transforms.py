@@ -79,7 +79,12 @@ class RandomRotation(T.RandomRotation):
         image = F.rotate(image, angle, self.resample, self.expand, self.center, fill)
         if target is not None:
             target["masks"] = F.rotate(target["masks"], angle)
-            target["boxes"] = masks_to_boxes(target["masks"])
+            try:
+                target["boxes"] = masks_to_boxes(target["masks"])
+            except:
+                print(target)
+                image.save("error.jpg")
+                target["boxes"] = masks_to_boxes(target["masks"])
         return image, target
 
 class PILToTensor(nn.Module):
