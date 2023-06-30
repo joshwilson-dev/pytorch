@@ -83,23 +83,31 @@ def evaluate(model, data_loader, device):
     header = "Test:"
 
     coco = get_coco_api_from_dataset(data_loader.dataset)
+
+    # Specify iou types
     iou_types = _get_iou_types(model)
+    # iou_types = ["bbox"]
     coco_evaluator = CocoEvaluator(coco, iou_types)
 
     # update area ranges
-    min_dim = 0
-    max_dim = 10000
-    steps = 20
+    min_dim = 100
+    max_dim = 1500
+    steps = 14
     step_size = (max_dim - min_dim)/steps
     dims = np.arange(min_dim, max_dim, step_size)
-    areaRng = [[0, 1e5 ** 2]] + [[dim, (dim + step_size)] for dim in dims]
+    areaRng = [[0, 1e5 ** 2]] + [[dim, 1e5 ** 2] for dim in dims]
     areaRngLbl = ['all'] + [str(dim[1]) for dim in areaRng]
-    coco_evaluator.coco_eval["bbox"].params.areaRng = areaRng
-    coco_evaluator.coco_eval["bbox"].params.areaRngLbl = areaRngLbl
+
+    for iou_type in iou_types:
+        coco_evaluator.coco_eval[iou_type].params.areaRng = areaRng
+        coco_evaluator.coco_eval[iou_type].params.areaRngLbl = areaRngLbl
+        # coco_evaluator.coco_eval[iou_type].params.iouThrs = [0.5, 0.75]
+        # coco_evaluator.coco_eval[iou_type].params.maxDets = [100]
 
     # copy the coco eval and set useCats to 0
     coco_evaluator_useCats = copy.deepcopy(coco_evaluator)
-    coco_evaluator_useCats.coco_eval["bbox"].params.useCats = 0
+    for iou_type in iou_types:
+        coco_evaluator_useCats.coco_eval[iou_type].params.useCats = 0
 
     for images, targets in metric_logger.log_every(data_loader, 100, header):
         images = list(img.to(device) for img in images)
@@ -132,8 +140,7 @@ def evaluate(model, data_loader, device):
             evaluator = coco_evaluator
         else: evaluator = coco_evaluator_useCats
         evaluator.accumulate()
-        evaluator.summarize()
+        # evaluator.summarize()
         torch.set_num_threads(n_threads)
         results.append({"useCats": useCats, "evaluator": copy.deepcopy(evaluator)})
-    torch.set_num_threads(n_threads)
     return results

@@ -44,7 +44,7 @@ file_path_variable = search_for_file_path()
 label_dict = {
     "{'name': 'Masked Lapwing', 'class': 'aves', 'order': '', 'family': '', 'genus': '', 'species': '', 'age': 'adult'}": "{'name': 'Masked Lapwing', 'class': 'aves', 'order': 'charadriiformes', 'family': 'charadriidae', 'genus': 'vanellus', 'species': 'miles', 'age': 'adult'}"
 }
-
+poses = ["flying", "preening", "resting", "lying"]
 # did the user select a dir or cancel?
 if len(file_path_variable) > 0:
     # confirm dir with user
@@ -56,18 +56,27 @@ if len(file_path_variable) > 0:
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
-                if file.endswith(".json"):
-                    annotation_path = os.path.join(root, file)
-                    annotation = json.load(open(annotation_path))
-                    print("Renaming instances in", file)
-                    for i in range(len(annotation["shapes"])):
-                        old_label = annotation["shapes"][i]["label"]
-                        try:
-                            new_label = label_dict[old_label]
-                        except:
-                            print(old_label, "not in label dictionary")
-                            continue
-                        annotation["shapes"][i]["label"] = new_label
-                    annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
-                    with open(annotation_path, 'w') as annotation_file:
-                        annotation_file.write(annotation_str)
+                if "fully annotated" in root or "partially annotated" in root:
+                    if file.endswith(".json"):
+                        print("Renaming instances in", file)
+                        annotation_path = os.path.join(root, file)
+                        print(annotation_path)
+                        annotation = json.load(open(annotation_path))
+                        check = False
+
+                        for i in range(len(annotation["shapes"])):
+                            label = json.loads(annotation["shapes"][i]["label"].replace("'", '"'))
+                            if label["pose"] == "unknown":
+                                label["pose"] = "resting"
+                            try:
+                                label["sex"]
+                            except:
+                                label["sex"] = "unknown"
+                            try:
+                                label["obscured"]
+                            except:
+                                label["obscured"] = "no"
+                            annotation["shapes"][i]["label"] = json.dumps(label).replace('"', "'")
+                        annotation_str = json.dumps(annotation, indent = 2).replace('"null"', 'null')
+                        with open(annotation_path, 'w') as annotation_file:
+                            annotation_file.write(annotation_str)

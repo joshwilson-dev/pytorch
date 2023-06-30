@@ -14,20 +14,17 @@ the number of epochs should be adapted so that we have the same number of iterat
 """
 from torchvision.models.detection import roi_heads
 from torchvision.ops import boxes as box_ops
-import custom_roi_heads
-import custom_boxes
-import json
+from custom_roi_heads import postprocess_detections, forward
+from custom_boxes import batched_nms, _batched_nms_coordinate_trick
 
 # redefining roi_heads to return scores for all classes
 # and filter the classes based on a supplied filter
-roi_heads.RoIHeads.postprocess_detections = custom_roi_heads.postprocess_detections
-roi_heads.RoIHeads.forward = custom_roi_heads.forward
+roi_heads.RoIHeads.postprocess_detections = postprocess_detections
+roi_heads.RoIHeads.forward = forward
 
 # redefining boxes to do nms on all classes, not class specific
-box_ops.batched_nms = custom_boxes.batched_nms
-box_ops._batched_nms_coordinate_trick = custom_boxes._batched_nms_coordinate_trick
-
-
+box_ops.batched_nms = batched_nms
+box_ops._batched_nms_coordinate_trick = _batched_nms_coordinate_trick
 
 import datetime
 import os
@@ -193,41 +190,31 @@ def save_eval(results):
     #  precision  - [TxRxKxAxM] precision for every evaluation setting
     #  recall     - [TxKxAxM] max recall for every evaluation setting
     #  score      - [TxRxKxAxM] score for every evaluation setting
-    result_dict = {'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': [], 'useCats': []}
+    result_dict = {'iou_type': [], 'iouThr': [], 'recThr': [], 'catId': [], 'area': [], 'maxDet': [], 'precision': [], 'scores': []}
     for result in results:
-        useCats = result["useCats"]
-        iouThrs = result["evaluator"].coco_eval["bbox"].eval["params"].iouThrs
-        recThrs = result["evaluator"].coco_eval["bbox"].eval["params"].recThrs
-        catIds = result["evaluator"].coco_eval["bbox"].eval["params"].catIds
-        areaRng = result["evaluator"].coco_eval["bbox"].eval["params"].areaRng
-        maxDets = result["evaluator"].coco_eval["bbox"].eval["params"].maxDets
-        for iouThr_index in range(len(iouThrs)):
-            for recThr_index in range(len(recThrs)):
-                for catId_index in range(len(catIds)):
-                    for area_index in range(len(areaRng)):
-                        for maxDet_index in range(len(maxDets)):
-                            result_dict['iouThr'].append(iouThrs[iouThr_index])
-                            result_dict['recThr'].append(recThrs[recThr_index])
-                            result_dict['catId'].append(catIds[catId_index])
-                            result_dict['area'].append(areaRng[area_index])
-                            result_dict['maxDet'].append(maxDets[maxDet_index])
-                            result_dict['precision'].append(result["evaluator"].coco_eval["bbox"].eval["precision"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
-                            result_dict['scores'].append(result["evaluator"].coco_eval["bbox"].eval["scores"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
-                            result_dict['useCats'].append(useCats)
+        for iou_type in ["bbox"]:#result['evaluator'].iou_types:
+            iouThrs = result["evaluator"].coco_eval[iou_type].eval["params"].iouThrs
+            recThrs = result["evaluator"].coco_eval[iou_type].eval["params"].recThrs
+            catIds = result["evaluator"].coco_eval[iou_type].eval["params"].catIds
+            areaRng = result["evaluator"].coco_eval[iou_type].eval["params"].areaRng
+            maxDets = result["evaluator"].coco_eval[iou_type].eval["params"].maxDets
+            for iouThr_index in [0]:# range(len(iouThrs)):
+                for recThr_index in range(len(recThrs)):
+                    for catId_index in range(len(catIds)):
+                        for area_index in range(len(areaRng)):
+                            for maxDet_index in [-1]:#range(len(maxDets)):
+                                result_dict['iouThr'].append(iouThrs[iouThr_index])
+                                result_dict['recThr'].append(recThrs[recThr_index])
+                                result_dict['catId'].append(catIds[catId_index])
+                                result_dict['area'].append(areaRng[area_index])
+                                result_dict['maxDet'].append(maxDets[maxDet_index])
+                                result_dict['precision'].append(result["evaluator"].coco_eval[iou_type].eval["precision"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
+                                result_dict['scores'].append(result["evaluator"].coco_eval[iou_type].eval["scores"][iouThr_index, recThr_index, catId_index, area_index, maxDet_index])
+                                result_dict['iou_type'].append(iou_type)
     with open(os.path.join(args.output_dir, "performance_metrics.csv"), "w", newline='') as outfile:
         writer = csv.writer(outfile)
         writer.writerow(result_dict.keys())
         writer.writerows(zip(*result_dict.values()))
-    return
-
-def save_eval_two(results):
-    result = list(filter(lambda d: d['useCats'] == 1, results))
-    res = [i for i in result["evaluator"].coco_eval["bbox"].evalImgs if i is not None]
-    keys = res[0].keys()
-    with open('performance_metrice_per_img.csv', 'w', newline='') as output_file:
-        dict_writer = csv.DictWriter(output_file, keys)
-        dict_writer.writeheader()
-        dict_writer.writerows(res)
     return
 
 def main(args):
@@ -280,16 +267,10 @@ def main(args):
     print("Creating model")
 
     if args.custommodel == 1:
-        target_gsd = 0.005
-        min_instance_size = 25
-        max_instance_size = 245
-        step_size = int(((max_instance_size - min_instance_size)/4))
-        anchor_sizes = list(range(min_instance_size, max_instance_size + step_size, step_size))
-        anchor_sizes = tuple((size / (target_gsd * 100),) for size in anchor_sizes)
-        print("Anchor Sizes: ", anchor_sizes)
-        aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
-        rpn_anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios)
-        kwargs = {"rpn_anchor_generator": rpn_anchor_generator}
+        kwargs = {
+            "min_size": 1300,
+            "max_size": 1300
+        }
         backbone = resnet_fpn_backbone(backbone_name = args.backbone, weights=args.weights_backbone, trainable_layers=args.trainable_backbone_layers)
         model = torchvision.models.detection.__dict__[args.model](backbone = backbone, num_classes = num_classes, **kwargs)
     else:
@@ -362,65 +343,64 @@ def main(args):
         writer = SummaryWriter(log_dir = args.output_dir)
         epochs_without_improvement = 0
         lr_steps = 0
-        best_mARP = 0
+        best_F1 = 0
+        print("Start training")
+        start_time = time.time()
+        for epoch in range(args.start_epoch, args.epochs):
+            if args.distributed:
+                train_sampler.set_epoch(epoch)
+            train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
+            if args.output_dir:
+                checkpoint = {
+                    "model": model_without_ddp.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "lr_scheduler": lr_scheduler.state_dict(),
+                    "args": args,
+                    "epoch": epoch,
+                }
+                if args.amp:
+                    checkpoint["scaler"] = scaler.state_dict()
 
-    print("Start training")
-    start_time = time.time()
-    for epoch in range(args.start_epoch, args.epochs):
-        if args.distributed:
-            train_sampler.set_epoch(epoch)
-        train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
-        if args.output_dir:
-            checkpoint = {
-                "model": model_without_ddp.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "lr_scheduler": lr_scheduler.state_dict(),
-                "args": args,
-                "epoch": epoch,
-            }
-            if args.amp:
-                checkpoint["scaler"] = scaler.state_dict()
-
-        results = evaluate(model, data_loader_test, device=device)
-        result = list(filter(lambda d: d['useCats'] == 1, results))[0]
-        mAP = result["evaluator"].coco_eval["bbox"].stats[0]
-        mAR = result["evaluator"].coco_eval["bbox"].stats[8]
-        mARP = (mAP + mAR) / 2
-        writer.add_scalar("mAP", mAP, epoch)
-        writer.add_scalar("mAR", mAR, epoch)
-        writer.add_scalar("mARP", mARP, epoch)
-        if mARP > best_mARP:
-            print("The model improved this epoch")
-            # save best model and state dict
-            print("Updating best model & results")
-            utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
-            utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
-            save_eval(results)
-            best_mARP = mARP
-            epochs_without_improvement = 0
-        else:
-            epochs_without_improvement += 1
-            print("The model has not improved for {} epochs...".format(epochs_without_improvement))
-        if epochs_without_improvement == args.patience:
-            print("{} epochs without improvement...".format(args.patience))
-            # load best model checkpoint
-            checkpoint = torch.load(os.path.join(args.output_dir, 'model_best_checkpoint.pth'), map_location="cpu")
-            model_without_ddp.load_state_dict(checkpoint["model"])
-            optimizer.load_state_dict(checkpoint["optimizer"])
-            lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
-            # decrease the learning rate, unless at last lr, then stop
-            if lr_steps < len(args.lr_steps) - 1:
-                print("Decreasing learning rate...")
-                lr_scheduler.step()
-                lr_steps += 1
+            results = evaluate(model, data_loader_test, device=device)
+            result = list(filter(lambda d: d['useCats'] == 1, results))[0]
+            mAP = result["evaluator"].coco_eval["bbox"].stats[0]
+            mAR = result["evaluator"].coco_eval["bbox"].stats[8]
+            F1_score = (2 * mAP * mAR) / (mAP + mAR)
+            writer.add_scalar("mAP", mAP, epoch)
+            writer.add_scalar("mAR", mAR, epoch)
+            writer.add_scalar("F1_score", F1_score, epoch)
+            if F1_score > best_F1:
+                print("The model improved this epoch")
+                # save best model and state dict
+                print("Updating best model & results")
+                utils.save_on_master(checkpoint,os.path.join(args.output_dir, 'model_best_checkpoint.pth'))
+                utils.save_on_master(model_without_ddp.state_dict(),os.path.join(args.output_dir, 'model_best_state_dict.pth'))
+                save_eval(results)
+                best_F1 = F1_score
                 epochs_without_improvement = 0
             else:
-                writer.flush()
-                break
+                epochs_without_improvement += 1
+                print("The model has not improved for {} epochs...".format(epochs_without_improvement))
+            if epochs_without_improvement == args.patience:
+                print("{} epochs without improvement...".format(args.patience))
+                # load best model checkpoint
+                checkpoint = torch.load(os.path.join(args.output_dir, 'model_best_checkpoint.pth'), map_location="cpu")
+                model_without_ddp.load_state_dict(checkpoint["model"])
+                optimizer.load_state_dict(checkpoint["optimizer"])
+                lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+                # decrease the learning rate, unless at last lr, then stop
+                if lr_steps < len(args.lr_steps) - 1:
+                    print("Decreasing learning rate...")
+                    lr_scheduler.step()
+                    lr_steps += 1
+                    epochs_without_improvement = 0
+                else:
+                    writer.flush()
+                    break
 
-    total_time = time.time() - start_time
-    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print(f"Training time {total_time_str}")
+        total_time = time.time() - start_time
+        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+        print(f"Training time {total_time_str}")
 
 if __name__ == "__main__":
     args = get_args_parser().parse_args()

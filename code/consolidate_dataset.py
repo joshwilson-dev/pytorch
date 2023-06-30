@@ -20,13 +20,13 @@ import tkinter
 from tkinter import filedialog
 from tkinter import messagebox
 import json
+from PIL import Image
+import hashlib
+import piexif
 
 #################
 #### Content ####
 #################
-# image_file_path = os.path.abspath("C:/Users/uqjwil54/Documents/trial/2022-10-11 1020/backgrounds/fc61990811f490df4b32a7780fff688d.JPG")
-# background_dataset = "C:/Users/uqjwil54/Documents/trial/dataset/backgrounds/fc61990811f490df4b32a7780fff688d.JPG"
-# shutil.copyfile(image_file_path, background_dataset)
 
 # create function for user to select dir
 root = tkinter.Tk()
@@ -59,13 +59,39 @@ if len(file_path_variable) > 0:
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
             for file in files:
-                if "fully annotated" in root or "backgrounds" in root:
+                if "fully annotated" in root or "partially annotated" in root or "backgrounds" in root:
                     if file.endswith(".json"):
-                        annotation_file_name = file
-                        annotation_file_path = os.path.join(root, annotation_file_name)
-                        annotation = json.load(open(annotation_file_path))
-                        image_file_name = annotation["imagePath"]
-                        image_file_path = os.path.join(root, image_file_name)
-                        print(image_file_path)
-                        shutil.copyfile(image_file_path, os.path.join(input, image_file_name))
-                        shutil.copyfile(annotation_file_path, os.path.join(input, annotation_file_name))
+                        print(file)
+
+                        # Input paths
+                        annotation_input_name = file
+                        annotation_input_path = os.path.join(root, annotation_input_name)
+                        annotation = json.load(open(annotation_input_path))
+                        image_input_name = annotation["imagePath"]
+                        image_input_path = os.path.join(root, image_input_name)
+
+                        # Calculate md5
+                        image = Image.open(image_input_path)
+                        md5 = hashlib.md5(image.tobytes()).hexdigest()
+
+                        # Output paths
+                        annotation_output_name = md5 + '.json'
+                        annotation_output_path = os.path.join(input, annotation_output_name)
+                        image_output_name = md5 + '.jpg'
+                        image_output_path = os.path.join(input, image_output_name)
+
+                        # Update annotation
+                        annotation["imagePath"] = image_output_name
+                        annotation = json.dumps(annotation, indent = 2).replace('"null"', 'null')
+
+                        # Write annotation
+                        with open(annotation_output_path, 'w') as annotation_file:
+                            annotation_file.write(annotation)
+
+                        # Write original image path to exif comments
+                        exif = piexif.load(image.info['exif'])
+                        exif["0th"][piexif.ImageIFD.XPComment] = json.dumps(image_input_name).encode('utf-16le')
+                        exif = piexif.dump(exif)
+
+                        # Save image
+                        image.save(image_output_path, exif = exif)

@@ -46,25 +46,22 @@ if len(file_path_variable) > 0:
     # confirm dir with user
     check = messagebox.askquestion(
         "CONFIRM",
-        "Are you sure you want to create a dataset from the files in:\n" + file_path_variable)
+        "Are you sure you want to rmove the rectangle annotations from the annotation files in:\n" + file_path_variable)
     if check =="yes":
         os.chdir(file_path_variable)
-        paths = ["./images/background", "./images/foreground"]
-        for path in paths:
-            if os.path.exists(path):
-                shutil.rmtree(path)
-            os.makedirs(path)
         # iterate through files in dir
         for root, dirs, files in os.walk(os.getcwd()):
-            if 'images' not in root:
-                for file in files:
-                    if file.endswith(".json"):
-                        annotation_path = os.path.join(root, file)
-                        annotation = json.load(open(annotation_path))
-                        image_path = os.path.join(root, annotation["imagePath"])
-                        if len(annotation["shapes"]) == 0:
-                            shutil.copy(annotation_path, os.path.join(paths[0], file))
-                            shutil.copy(image_path, os.path.join(paths[0], annotation["imagePath"]))
-                        else:
-                            shutil.copy(annotation_path, os.path.join(paths[1], file))
-                            shutil.copy(image_path, os.path.join(paths[1], annotation["imagePath"]))
+            for file in files:
+                if file.endswith(".json"):
+                    annotation_path = os.path.join(root, file)
+                    annotation = json.load(open(annotation_path))
+                    index = 0
+                    while index < len(annotation["shapes"]):
+                        if annotation["shapes"][index]["shape_type"] == "rectangle":
+                            del annotation["shapes"][index]
+                            index = 0
+                        else: index += 1
+                    annotation_str = json.dumps(annotation, indent = 2)
+                    with open(annotation_path, 'w') as annotation_file:
+                        annotation_file.write(annotation_str)
+                    print("Removed rectangle annotation from: ", file)

@@ -19,11 +19,8 @@ import tkinter
 from tkinter import filedialog
 from tkinter import messagebox
 import json
-import piexif
 import pandas as pd
-import random
-from PIL import Image, ImageDraw, ImageEnhance
-import numpy as np
+from PIL import Image
 import hashlib
 import shutil
 from ortools.sat.python import cp_model
@@ -47,42 +44,6 @@ def search_for_file_path ():
         print ("You chose: %s" % tempdir)
     return tempdir
 
-def crop_mask(im, points):
-    # convrt points to tuple
-    polygon = [tuple(l) for l in points]
-    # find bounding box
-    max_x = max([t[0] for t in points])
-    min_x = min([t[0] for t in points])
-    max_y = max([t[1] for t in points])
-    min_y = min([t[1] for t in points])
-    # crop a square image with bird at centre
-    width = max_x - min_x
-    height = max_y - min_y
-    size = max(width, height)
-    centre_x = min_x + (max_x - min_x) / 2
-    centre_y = min_y + (max_y - min_y) / 2
-    origin = [(centre_x - size/2, centre_y - size/2)] * len(polygon)
-    crop_corners = (centre_x - size/2, centre_y - size/2, centre_x + size/2, centre_y + size/2)
-    instance = im.crop(crop_corners).convert('RGBA')
-    # adjust polygon to crop origin
-    polygon = tuple(tuple(a - b for a, b in zip(tup1, tup2))\
-        for tup1, tup2 in zip(polygon, origin))
-    # convert to numpy (for convenience)
-    imArray = np.asarray(instance)
-    # crop out the mask
-    maskIm = Image.new('L', (imArray.shape[1], imArray.shape[0]), 0)
-    ImageDraw.Draw(maskIm).polygon(polygon, outline=1, fill=1)
-    mask = np.array(maskIm)
-    # assemble new image (uint8: 0-255)
-    newImArray = np.empty(imArray.shape,dtype='uint8')
-    # colors (three first columns, RGB)
-    newImArray[:,:,:3] = imArray[:,:,:3]
-    # transparency (4th column)
-    newImArray[:,:,3] = mask*255
-    # back to Image from numpy
-    mask = Image.fromarray(newImArray, "RGBA")
-    return mask, polygon
-
 def blackout_instance(image, box):
     box_width = box[2]
     box_height = box[3]
@@ -91,7 +52,7 @@ def blackout_instance(image, box):
     image.paste(black_box, topleft)
     return image
 
-def balance_instances(df, max_instances_class, ratio):
+def balance_instances(df, ratio):
     # Create the model
     model = cp_model.CpModel()
     # create array containing row selection flags. 
@@ -99,9 +60,9 @@ def balance_instances(df, max_instances_class, ratio):
     row_selection = [model.NewBoolVar(f'{i}') for i in range(df.shape[0])]
     # Number of instances for each class should be less than class_threshold
     for column in df.columns:
-        if "seed" in column:
-            model.Add(df[column].dot(row_selection) <= math.floor(min(ratio * df[column].sum(), max_instances_class)))
-    # Maximise the number of imaes
+        if "senecio-lautus-seed" in column:
+            model.Add(df[column].dot(row_selection) <= math.floor(ratio * df[column].sum()))
+    # Maximise the number of patches
     model.Maximize(pd.Series([1]*len(df)).dot(row_selection))
     # Solve
     solver = cp_model.CpSolver()
@@ -109,79 +70,6 @@ def balance_instances(df, max_instances_class, ratio):
     # Get the rows selected
     rows = [row for row in range(df.shape[0]) if solver.Value(row_selection[row])]
     return df.iloc[rows, :].reset_index()
-
-def rotate_point(point, centre, deg):
-    rotated_point = [
-        centre[0] + (point[0]-centre[0])*math.cos(math.radians(deg)) - (point[1]-centre[1])*math.sin(math.radians(deg)),
-        centre[1] + (point[0]-centre[0])*math.sin(math.radians(deg)) + (point[1]-centre[1])*math.cos(math.radians(deg))]
-    return rotated_point
-
-def transforms(instance, mask, gsd, target_gsd, instance_area, min_pixel_area, max_pixel_area):
-    min_transform = 0.75
-    max_transform = 1.25
-    # quality
-    # min_scale = min_pixel_area/instance_area
-    # max_scale = max_pixel_area/instance_area
-    # intermediate_scale = random.uniform(min_scale, max_scale)
-    # intermediate_size = tuple(int(dim * math.sqrt(intermediate_scale)) for dim in instance.size)
-    # target_scale = gsd/target_gsd
-    # target_size = tuple(int(dim * target_scale) for dim in instance.size)
-    # instance = instance.resize(intermediate_size)
-    # instance = instance.resize(target_size)
-    # instance_area = intermediate_size[0]*intermediate_size[1]
-    # mask = [[point[0] * target_scale, point[1] * target_scale] for point in mask]
-    # colour
-    colour = random.uniform(min_transform, max_transform)
-    instance = ImageEnhance.Color(instance)
-    instance = instance.enhance(colour)
-    # contrast
-    contrast = random.uniform(min_transform, max_transform)
-    instance = ImageEnhance.Contrast(instance)
-    instance = instance.enhance(contrast)
-    # brightness
-    brightness = random.uniform(min_transform, max_transform)
-    instance = ImageEnhance.Brightness(instance)
-    instance = instance.enhance(brightness)
-    # rotate
-    centre = [max(instance.size)/2] * 2
-    rotation = random.sample([0, 90, 180, 270], 1)[0]
-    if rotation != 0:
-        instance = instance.rotate(rotation)
-        mask = [rotate_point(point, centre, -rotation) for point in mask]
-    # poly crop
-    # poly_prob = random.uniform(0, 1)
-    # if poly_prob > 0.95:
-    #     instance = cut_polygon(instance)
-    return instance, mask, instance_area
-
-def cut_polygon(instance):
-    width, height = instance.size
-    instance_area = width * height
-    draw = ImageDraw.Draw(instance)
-    for _ in range(3):
-        overlap = 1
-        while overlap > 0.05 or overlap < 0.01:
-            points = tuple((random.randint(0, width) , random.randint(0, height)) for _ in range(3))
-            overlap = Polygon(points).area/instance_area
-        draw.polygon(points, fill=(0, 0, 0, 0))
-    return instance
-
-def create_shadow(bird):
-    shadow = bird.copy()
-    width, height = shadow.size
-    max_offset = 0.75
-    shadow_data = []
-    transparency = random.randint(50, 200)
-    for item in shadow.getdata():
-        if item[3] > 0:
-            shadow_data.append((0, 0, 0, transparency))
-        else:
-            shadow_data.append(item)
-    shadow.putdata(shadow_data)
-    x_offset = random.randint(int(-width * max_offset), int(width * max_offset))
-    y_offset = random.randint(int(-height * max_offset), int(height * max_offset))
-    shadow = shadow.crop((min(x_offset, 0), min(y_offset, 0), max(width, width + x_offset), max(height, height + y_offset)))
-    return shadow
 
 def save_dataset(train, test):
     # to share coco categories accross train and test
@@ -201,42 +89,21 @@ def save_dataset(train, test):
         for image_path, patches in dataset:
             # open image
             image = Image.open(image_path)
-            # update exif data
-            # exif_dict = piexif.load(image.info['exif'])
-            # comments = json.loads("".join(map(chr, [i for i in exif_dict["0th"][piexif.ImageIFD.XPComment] if i != 0])))
-            # comments["original_image"] = image_path
-            # comments["gsd"] = target_gsd
-            # exif_dict["0th"][piexif.ImageIFD.XPComment] = json.dumps(comments).encode('utf-16le')
-            # image_exif = piexif.dump(exif_dict)
             patches = patches.groupby("patch_points")
             for patch_points, instances in patches:
                 # crop the image to the patch
                 patch_object = image.crop(patch_points)
-                # resize patch object to target gsd
-                scale = instances["image_gsd"].iloc[0]/target_gsd
-                size = tuple(int(dim * scale) for dim in patch_object.size)
-                patch_object = patch_object.resize((size))
                 labelme_shapes = []
                 coco_image_id += 1
                 # print where you're up to n creating dataset
                 if coco_image_id % int(total_images / 10) == 0:
                     print("Saving {} image {} of {}".format(dir, coco_image_id, total_images))
-                if instances.iloc[0]["instance_type"] == "artificial":
-                    # create grid of potential bird positions
-                    bird_size = max(max(bird.size) for bird in instances["instance_object"])
-                    spacing = range(0, target_patchsize - bird_size, int(bird_size * 0.75))
-                    x = random.sample(spacing, instances_per_background)
-                    y = random.sample(spacing, instances_per_background)
-                    positions = [[x, y] for x, y in zip(x, y)]
                 instances = instances.reset_index(drop = True)
                 for index, instance in instances.iterrows():
                     # if its not a background
                     if instance["instance_class"] != "background":
-                        # if instance is not artificial we need to scale the mask
-                        if instance["instance_type"] == "artificial":
-                            instance_mask = [[point[0] + positions[index][0], point[1] + positions[index][1]] for point in instance["instance_mask"]]
-                        else:
-                            instance_mask = [[int((point[0] - patch_points[0]) * scale), int((point[1] - patch_points[1]) * scale)] for point in instance["instance_mask"]]
+                        # scale points to target gsd
+                        instance_mask = [[int(point[0] - patch_points[0]), int(point[1] - patch_points[1])] for point in instance["instance_mask"]]
                         # generate the instance box
                         xmin = min(instance_mask, key=lambda x: x[0])[0]
                         xmax = max(instance_mask, key=lambda x: x[0])[0]
@@ -244,12 +111,9 @@ def save_dataset(train, test):
                         ymax = max(instance_mask, key=lambda x: x[1])[1]
                         coco_instance_box = [xmin, ymin, xmax - xmin, ymax - ymin]
                         labelme_instance_box = [[xmin, ymin], [xmax, ymax]]
-                        resized_area = coco_instance_box[2] * coco_instance_box[3]
-                        area = instance["instance_area"]
                         # blackout instances that aren't included
                         if instance["instance_class"] not in included_classes or\
-                            instance["instance_overlap"] < min_overlap or\
-                            instance["instance_shape_type"] != "polygon":
+                            instance["instance_overlap"] < min_overlap:
                             patch_object = blackout_instance(patch_object, coco_instance_box)
                             continue
                         # save instance labelme annotation
@@ -269,7 +133,7 @@ def save_dataset(train, test):
                             coco_category = {
                                 "id": category_id,
                                 "name": instance["instance_class"],
-                                "supercategory": "Seed"}
+                                "supercategory": "Bird"}
                             coco_categories.append(coco_category)
                         coco_instance_id += 1
                         coco_annotation = {
@@ -279,8 +143,7 @@ def save_dataset(train, test):
                             "segmentation": [[item for sublist in instance_mask for item in sublist]],
                             "bbox": coco_instance_box,
                             "id": coco_instance_id,
-                            "area": area,
-                            "resized_area": resized_area}
+                            "area": instance["instance_area"]}
                         if len(instance_mask) == 4:
                             labelme_annotation["points"] = labelme_instance_box
                             labelme_annotation["shape_type"] = "rectangle"
@@ -289,17 +152,6 @@ def save_dataset(train, test):
                             labelme_annotation["shape_type"] = "polygon"
                         labelme_shapes.append(labelme_annotation)
                         coco["annotations"].append(coco_annotation)
-                    # if there is an instance object, paste it onto the image
-                    if instance["instance_type"] == "artificial":
-                        instance_object = instance["instance_object"]
-                        location = (positions[index][0], positions[index][1])
-                        # paste shadow under bird
-                        patch_object = patch_object.convert("RGBA")
-                        # if random.uniform(0, 1) < 0.3:
-                        #     shadow = create_shadow(instance_object)
-                        #     patch_object.paste(shadow, location, shadow)
-                        patch_object.paste(instance_object, location, instance_object)
-                        patch_object = patch_object.convert("RGB")
                 # determine name of patch
                 patch_name = hashlib.md5(patch_object.tobytes()).hexdigest() + ".jpg"
                 # update patch data
@@ -307,13 +159,13 @@ def save_dataset(train, test):
                 labelme_path = os.path.splitext(patch_path)[0]+'.json'
                 # store coco info
                 coco_image_info = {
-                    "height": size[1],
-                    "width": size[0],
+                    "height": 800,
+                    "width": 800,
                     "id": coco_image_id,
                     "file_name": patch_name}
                 coco["images"].append(coco_image_info)
                 # save patch
-                patch_object.save(patch_path)#, exif = image_exif)
+                patch_object.save(patch_path)
                 # save labeleme
                 labelme = {
                     "version": "5.0.1",
@@ -321,8 +173,8 @@ def save_dataset(train, test):
                     "shapes": labelme_shapes,
                     "imagePath": patch_name,
                     "imageData": 'null',
-                    "imageHeight": size[1],
-                    "imageWidth": size[0]}
+                    "imageHeight": 800,
+                    "imageWidth": 800}
                 labelme = json.dumps(labelme, indent = 2).replace('"null"', 'null')
                 with open(labelme_path, 'w') as labelme_file:
                     labelme_file.write(labelme)
@@ -349,23 +201,13 @@ if len(file_path_variable) > 0:
         os.chdir(file_path_variable)
         # create dictionaries to store data
         dataset_keys = [
-            "image_path", "image_gsd", "patch_points",
-            "instance_type", "instance_object", "instance_class",
-            "instance_crop", "instance_mask", "instance_shape_type",
-            "instance_overlap", "instance_area"]
+            "image_path", "patch_points", "instance_class",
+            "instance_mask", "instance_overlap", "instance_area"]
         data = {k:[] for k in dataset_keys}
         # variables
-        target_gsd = 0.005
-        min_pixel_area = 500
-        max_pixel_area = 10000
-        min_polygons_class = 10
-        max_instances_class = 10000
         train_test_ratio = 0.25
-        max_instances_class_test = max_instances_class * train_test_ratio
-        max_instances_class_train = max_instances_class - max_instances_class_test
-        min_overlap = 0.9
-        target_patchsize = 800
-        instances_per_background = 3
+        min_overlap = 0.75
+        patchsize = 800
         paths = ["dataset/train", "dataset/test", "dataset/annotations"]
         for path in paths:
             if os.path.exists(path):
@@ -389,18 +231,6 @@ if len(file_path_variable) > 0:
                     # get image dimensions
                     image_width = annotation["imageWidth"]
                     image_height = annotation["imageHeight"]
-
-                    # get the gsd
-                    try:
-                        # image_gsd = annotation["gsd"]
-                        image_gsd = 0.005
-                    except:
-                        print("NO GSD")
-
-                    # determine the scale factor to scale the image to
-                    # the target gsd, which makes all object a consistent size
-                    scale = target_gsd/image_gsd
-                    patchsize = target_patchsize * scale
 
                     # determine how many crops within accross the image
                     n_crops_width = math.ceil(image_width / patchsize)
@@ -434,20 +264,22 @@ if len(file_path_variable) > 0:
                             instance_id = 0
                             for shape in annotation["shapes"]:
                                 instance_id += 1
-                                # if the shape is a rectange convert to mask
+                                instance_mask = shape["points"]
+                                # convert box to mask
                                 if shape["shape_type"] == "rectangle":
                                     xmin = min(shape["points"], key=lambda x: x[0])[0]
                                     xmax = max(shape["points"], key=lambda x: x[0])[0]
                                     ymin = min(shape["points"], key=lambda x: x[1])[1]
                                     ymax = max(shape["points"], key=lambda x: x[1])[1]
-                                    instance_mask = tuple(((xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)))
-                                # convert mask to tuple
-                                else: instance_mask = tuple((point[0], point[1]) for point in shape["points"])
-
+                                    instance_mask = [
+                                        [xmin, ymin],
+                                        [xmax, ymin],
+                                        [xmax, ymax],
+                                        [xmin, ymin]]
                                 # create instance polygon
                                 instance_poly = Polygon(instance_mask)
 
-                                # determine box
+                                # determine area
                                 instance_area = instance_poly.area
 
                                 # check if polygon is in patch
@@ -458,27 +290,15 @@ if len(file_path_variable) > 0:
 
                                 # calculate the overlap between the full mask and the patch mask
                                 instance_overlap = instance_intersection.area/instance_area
-                                
-                                if shape["shape_type"] == "polygon":
-                                    # get the instance object
-                                    instance_object, instance_crop = crop_mask(image, shape["points"])
-                                else:
-                                    instance_object = "null"
-                                    instance_crop = "null"
 
                                 # get the instance class and shape type
                                 instance_class = shape["label"]
 
                                 # save instance to temp data
                                 data["image_path"].append(image_path)
-                                data["image_gsd"].append(image_gsd)
                                 data["patch_points"].append(patch_points)
-                                data["instance_type"].append("natural")
-                                data["instance_object"].append(instance_object)
-                                data["instance_class"].append(instance_class)
-                                data["instance_crop"].append(instance_crop)
                                 data["instance_mask"].append(instance_mask)
-                                data["instance_shape_type"].append(shape["shape_type"])
+                                data["instance_class"].append(instance_class)
                                 data["instance_overlap"].append(instance_overlap)
                                 data["instance_area"].append(instance_area)
                                 instance_in_patch = True
@@ -486,51 +306,31 @@ if len(file_path_variable) > 0:
                             # if there was no instances in the patch add it as background
                             if instance_in_patch == False:
                                 data["image_path"].append(image_path)
-                                data["image_gsd"].append(image_gsd)
                                 data["patch_points"].append(patch_points)
-                                data["instance_type"].append("natural")
-                                data["instance_object"].append("null")
+                                data["instance_mask"].append("background")
                                 data["instance_class"].append("background")
-                                data["instance_crop"].append("null")
-                                data["instance_mask"].append("null")
-                                data["instance_shape_type"].append("null")
                                 data["instance_overlap"].append(min_overlap)
-                                data["instance_area"].append(min_pixel_area)
+                                data["instance_area"].append("background")
 
         # convert dictionary to dataframe
         data = pd.DataFrame(data=data)
         # drop data not included
         included_data = (
             data
-            .query("instance_area >= {0}".format(min_pixel_area))
             .query("instance_overlap >= {0}".format(min_overlap))
             .query("~instance_class.str.contains('unknown')", engine="python"))
         # class abundance
-        total_class_count = (
+        instance_count = (
             included_data
             .instance_class
             .value_counts())
-        print("\tClass Count:\n{}\n".format(total_class_count))
-        # polygon abundance
-        polygon_class_count = (
-            included_data
-            .query("instance_shape_type == 'polygon'")
-            .instance_class
-            .value_counts())
-        print("\tPolygon Class Count:\n{}\n".format(polygon_class_count))
-        # only include species with enough data
-        polygon_count_threshold = list(polygon_class_count.index[polygon_class_count.gt(min_polygons_class)])
-        included_classes = polygon_count_threshold + ["background"]
-        print("Included Classes: ", included_classes)
-        # drop unused instances from included data
-        included_data = (
-            included_data
-            .query("instance_class.isin({0})".format(included_classes), engine="python"))
+        print("\tClass Count:\n{}\n".format(instance_count))       
+        # list of inclued species
+        included_classes = included_data["instance_class"].unique()
         # count class instances per patch
         instances_per_patch = (
             included_data
             .query("instance_class != 'background'")
-            .query("instance_shape_type == 'polygon'")
             .groupby(['image_path', 'patch_points', 'instance_class'])
             .size()
             .reset_index(name='counts')
@@ -540,16 +340,14 @@ if len(file_path_variable) > 0:
                 values="counts",
                 fill_value=0)
             .reset_index())
-        # generate test dataset
-        test_sample = balance_instances(instances_per_patch, max_instances_class_test, train_test_ratio)
+        # generate balanced test dataset
+        test_sample = balance_instances(instances_per_patch, train_test_ratio)
         # convert test back into patch data
         test_instances = (
             pd.merge(data, test_sample[["image_path", "patch_points"]], indicator=True, how='outer')
             .query('_merge=="both"')
             .drop('_merge', axis=1)
             .reset_index(drop = True))
-        print("Test Instances:\n{}\n".format(test_instances.query("instance_shape_type == 'polygon'").query("instance_overlap >= {0}".format(min_overlap)).query("instance_area >= {0}".format(min_pixel_area)).query("instance_class.isin({0})".format(included_classes), engine="python").instance_class.value_counts()))
-        print("Test patches:\n{}\n".format(test_instances.groupby(["image_path", "patch_points"]).ngroups))
         # drop test_instances from included_data
         included_data = (
             pd.merge(included_data, test_sample[["image_path", "patch_points"]], indicator=True, how='outer')
@@ -562,22 +360,15 @@ if len(file_path_variable) > 0:
             .query('_merge=="left_only"')
             .drop('_merge', axis=1)
             .reset_index(drop = True))
-        # get train_masks
-        train_masks = (
-            included_data
-            .query("instance_shape_type == 'polygon'")
-            .drop_duplicates(["image_path", "instance_mask"])
-            .reset_index(drop = True))
-        # generate train dataset
-        train_sample = balance_instances(instances_per_patch, max_instances_class_train, 1)
+        print(instances_per_patch)
+        # generate balanced train dataset
+        train_sample = balance_instances(instances_per_patch, 1)
         # convert test back into patch data
         train_instances = (
             pd.merge(data, train_sample[["image_path", "patch_points"]], indicator=True, how='outer')
             .query('_merge=="both"')
             .drop('_merge', axis=1)
             .reset_index(drop = True))
-        print("Train Instances:\n{}\n".format(train_instances.query("instance_shape_type == 'polygon'").query("instance_overlap >= {0}".format(min_overlap)).query("instance_area >= {0}".format(min_pixel_area)).query("instance_class.isin({0})".format(included_classes), engine="python").instance_class.value_counts()))
-        print("Train patches:\n{}\n".format(train_instances.groupby(["image_path", "patch_points"]).ngroups))
         # drop train instances from data
         included_data = included_data.query("instance_class == 'background'")
         # determine the number of background samples to take from each image
@@ -602,35 +393,14 @@ if len(file_path_variable) > 0:
             .drop('_merge', axis=1)
             .reset_index(drop = True))
         print("Train Backgrounds: ", len(train_backgrounds))
-        # step through backgrounds and paste instances on
-        random.seed(42)
-        random_state = 42
-        train_data = [train_instances]
-        for image_path, patches in train_backgrounds.groupby("image_path"):
-            image_gsd = patches.iloc[0]["image_gsd"]
-            for patch_points, _ in patches.groupby("patch_points"):
-                species = random.sample(list(train_masks["instance_class"].unique()), 1)
-                instances = (
-                    train_masks
-                    .query("instance_class.isin({0})".format(species), engine="python")
-                    .sample(n = instances_per_background, replace = True, random_state = random_state)
-                    .reset_index(drop = True))
-                random_state += 1
-                # save info to dataframe
-                for index, row in instances.iterrows():
-                    instance_object, instance_mask, instance_area = transforms(row["instance_object"], row["instance_crop"], row["image_gsd"], target_gsd, row["instance_area"], min_pixel_area, max_pixel_area)
-                    train_row = pd.DataFrame([[image_path, image_gsd, patch_points, instance_object, row["instance_class"], instance_mask, "artificial", 1.0, instance_area, "polygon"]], columns = ["image_path", "image_gsd", "patch_points", "instance_object", "instance_class", "instance_mask", "instance_type", "instance_overlap", "instance_area", "instance_shape_type"])
-                    train_data.append(train_row)
         train = (
-            pd.concat(train_data, ignore_index=True)
+            pd.concat([train_instances, train_backgrounds], ignore_index=True)
             .reset_index(drop = True))
-        # train = train_instances.reset_index(drop = True)
         train.name = 'train'
         # join test datasets
         test = (
             pd.concat([test_instances, test_backgrounds], ignore_index=True)
             .reset_index(drop = True))
-        # test = test_instances.reset_index(drop = True)
         test.name = 'test'
         # save data
         save_dataset(train, test)
