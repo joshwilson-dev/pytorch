@@ -5,10 +5,10 @@ from PIL import Image
 import hashlib
 import piexif
 
-index_to_class = json.load(open("./resources/index_to_class.json"))
+index_to_class = json.load(open("resources/index_to_class.json"))
 class_to_index = {value["name"]: key for key, value in index_to_class.items()}
 
-root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBD"
+root = "data/original"
 os.chdir(root)
 
 if os.path.exists("input"):

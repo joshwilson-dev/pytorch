@@ -90,9 +90,7 @@ sensor_size = {
     "M3E": [17.3, 13]
     }
 
-root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBD"
-# root = "C:/Users/uqjwil54/Documents/Projects/bird-detector/images"
-# root = "C:/Users/uqjwil54/Documents/Projects/object-detection-inference/images"
+root = "data/original"
 
 new = False
 os.chdir(root)

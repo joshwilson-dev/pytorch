@@ -266,7 +266,7 @@ def save_dataset(train, test):
     return
 
 # Set root and setup directories
-root = "datasets/bird_2024_02_19/"
+root = "data/bird_2024_02_19/"
 # root = "datasets/trial/"
 directories = ["train", "test", "annotations"]
 for directory in directories:

@@ -3,32 +3,34 @@ import json
 import csv
 import copy
 
-# base = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBD"
-# base = "datasets/bird_2024_02_13/raw"
-base = "datasets/bird_2024_02_13/balanced/train"
-os.chdir(base)
+root = "data/original"
 
-results = {"root": [], "dir": [], "file": [], "datetime": [], "shape_type": [], "common_name": [], "class": [], "order": [], "family": [], "genus": [], "species": [], "pose": [], "age": [], "latitude": [], "longitude": [], "gsd": [], "area": [], "obscured": []}
-for root, dirs, files in os.walk(os.getcwd()):
+results = {
+    "base": [], "file": [], "datetime": [], "shape_type": [],
+    "common_name": [], "class": [], "order": [], "family": [], "genus": [],
+    "species": [], "pose": [], "age": [], "latitude": [], "longitude": [],
+    "gsd": [], "area": [], "obscured": []}
+
+for base, dirs, files in os.walk(root):
     for file in files:
-        # if "fully annotated" in root or "background" in root:
+        if "fully annotated" in base or "background" in base:
             if file.endswith(".json"):
-                # print(file)
-                annotation = json.load(open(os.path.join(root, file)))
-                # gsd = annotation["gsd"]
-                # gsd_cat = str(round(gsd / 0.005) * 0.005)
-                # latitude = annotation["latitude"]
-                # longitude = annotation["longitude"]
-                # location = str(round(latitude, 1)) + ", " + str(round(longitude, 1))
-                # datetime = annotation["datetime"]
+                annotation = json.load(open(os.path.join(base, file)))
+                gsd = annotation["gsd"]
+                gsd_cat = str(round(gsd / 0.005) * 0.005)
+                latitude = annotation["latitude"]
+                longitude = annotation["longitude"]
+                location = str(round(latitude, 1)) + ", " + str(round(longitude, 1))
+                datetime = annotation["datetime"]
+                # camera = annotation["camera"]
 
-                datetime = ""
-                latitude = ""
-                longitude = ""
-                gsd = ""
+                # datetime = ""
+                # latitude = ""
+                # longitude = ""
+                # gsd = ""
+
                 if len(annotation["shapes"]) == 0:
-                    results["root"].append(root.split("\\")[5])
-                    results["dir"].append(root.split("\\")[6])
+                    results["base"].append(base)
                     results["file"].append(file)
                     results["datetime"].append(datetime)
                     results["shape_type"].append("background")
@@ -47,7 +49,6 @@ for root, dirs, files in os.walk(os.getcwd()):
                     results["obscured"].append("background")
                 else:
                     for shape in annotation["shapes"]:
-                        # print(shape["label"])
                         try:
                             points = tuple((point[0], point[1]) for point in shape["points"])
                             min_x = min(p[0] for p in points)
@@ -56,8 +57,7 @@ for root, dirs, files in os.walk(os.getcwd()):
                             max_y = max(p[1] for p in points)
                             area = (max_x - min_x) * (max_y - min_y)
                             label = json.loads(shape["label"].replace("'", '"'))
-                            results["root"].append(root.split("\\")[5])
-                            results["dir"].append(root.split("\\")[6])
+                            results["base"].append(base)
                             results["file"].append(file)
                             results["datetime"].append(datetime)
                             results["shape_type"].append(shape["shape_type"])
@@ -65,19 +65,19 @@ for root, dirs, files in os.walk(os.getcwd()):
                             results["age"].append(label["age"])
                             results["class"].append("aves")
 
-                            results["order"].append(label["order"])
-                            results["family"].append(label["family"])
-                            results["genus"].append(label["genus"])
-                            results["species"].append(label["species"])
-                            results["pose"].append("")
-                            results["obscured"].append("")
+                            # results["order"].append(label["order"])
+                            # results["family"].append(label["family"])
+                            # results["genus"].append(label["genus"])
+                            # results["species"].append(label["species"])
+                            # results["pose"].append("")
+                            # results["obscured"].append("")
 
-                            # results["order"].append("")
-                            # results["family"].append("")
-                            # results["genus"].append("")
-                            # results["species"].append("")
-                            # results["pose"].append(label["pose"])
-                            # results["obscured"].append(label["obscured"])
+                            results["order"].append("")
+                            results["family"].append("")
+                            results["genus"].append("")
+                            results["species"].append("")
+                            results["pose"].append(label["pose"])
+                            results["obscured"].append(label["obscured"])
 
                             results["latitude"].append(latitude)
                             results["longitude"].append(longitude)
@@ -89,7 +89,6 @@ for root, dirs, files in os.walk(os.getcwd()):
                             print(file)
                             print(shape["label"])
 
-# with open("tools/counts.csv", "w", newline='') as outfile:
 with open("counts.csv", "w", newline='') as outfile:
     writer = csv.writer(outfile)
     writer.writerow(results.keys())
