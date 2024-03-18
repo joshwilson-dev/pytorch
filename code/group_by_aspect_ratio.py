@@ -2,7 +2,7 @@ import bisect
 import copy
 import math
 from collections import defaultdict
-from itertools import repeat, chain
+from itertools import chain, repeat
 
 import numpy as np
 import torch
@@ -63,7 +63,7 @@ class GroupedBatchSampler(BatchSampler):
         expected_num_batches = len(self)
         num_remaining = expected_num_batches - num_batches
         if num_remaining > 0:
-            # for the remaining batches, take first the buffers with largest number
+            # for the remaining batches, take first the buffers with the largest number
             # of elements
             for group_id, _ in sorted(buffer_per_group.items(), key=lambda x: len(x[1]), reverse=True):
                 remaining = self.batch_size - len(buffer_per_group[group_id])
@@ -106,8 +106,7 @@ def _compute_aspect_ratios_slow(dataset, indices=None):
         batch_size=1,
         sampler=sampler,
         num_workers=14,  # you might want to increase it for faster processing
-        # collate_fn=lambda x: x[0],
-        collate_fn= collate
+        collate_fn=lambda x: x[0],
     )
     aspect_ratios = []
     with tqdm(total=len(dataset)) as pbar:
@@ -118,7 +117,6 @@ def _compute_aspect_ratios_slow(dataset, indices=None):
             aspect_ratios.append(aspect_ratio)
     return aspect_ratios
 
-def collate(x): return x[0]
 
 def _compute_aspect_ratios_custom_dataset(dataset, indices=None):
     if indices is None:

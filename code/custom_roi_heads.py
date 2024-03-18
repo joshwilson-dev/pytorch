@@ -54,8 +54,8 @@ def postprocess_detections(
         labels = labels.reshape(-1)
 
         # remove low scoring boxes
-        inds = torch.where(scores > self.score_thresh)[0]
-        boxes, scores, labels, class_scores = boxes[inds], scores[inds], labels[inds], class_scores[inds]
+        # inds = torch.where(scores > self.score_thresh)[0]
+        # boxes, scores, labels, class_scores = boxes[inds], scores[inds], labels[inds], class_scores[inds]
 
         # remove empty boxes
         keep = box_ops.remove_small_boxes(boxes, min_size=1e-2)
@@ -63,6 +63,7 @@ def postprocess_detections(
 
         # non-maximum suppression
         keep = box_ops.batched_nms(boxes, scores, labels, self.nms_thresh)
+
         # keep only topk scoring predictions
         keep = keep[: self.detections_per_img]
         boxes, scores, labels, class_scores = boxes[keep], scores[keep], labels[keep], class_scores[keep]

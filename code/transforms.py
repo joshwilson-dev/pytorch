@@ -1,11 +1,10 @@
-from typing import List, Tuple, Dict, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torchvision
 from torch import nn, Tensor
 from torchvision import ops
-from torchvision.transforms import functional as F
-from torchvision.transforms import transforms as T, InterpolationMode
+from torchvision.transforms import functional as F, InterpolationMode, transforms as T
 
 
 def _flip_coco_person_keypoints(kps, width):
@@ -45,47 +44,6 @@ class RandomHorizontalFlip(T.RandomHorizontalFlip):
                     target["keypoints"] = keypoints
         return image, target
 
-class RandomVerticalFlip(T.RandomVerticalFlip):
-    def forward(
-        self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
-    ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
-        if torch.rand(1) < self.p:
-            image = F.vflip(image)
-            if target is not None:
-                _, height, _ = F.get_dimensions(image)
-                target["boxes"][:, [1, 3]] = height - target["boxes"][:, [3, 1]]
-                if "masks" in target:
-                    target["masks"] = target["masks"].flip(1)
-                if "keypoints" in target:
-                    keypoints = target["keypoints"]
-                    keypoints = _flip_coco_person_keypoints(keypoints, height)
-                    target["keypoints"] = keypoints
-        return image, target
-
-from torchvision.ops import masks_to_boxes
-class RandomRotation(T.RandomRotation):
-    def forward(
-        self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
-    ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
-        fill = self.fill
-        channels, _, _ = F.get_dimensions(image)
-        if isinstance(image, Tensor):
-            if isinstance(fill, (int, float)):
-                fill = [float(fill)] * channels
-            else:
-                fill = [float(f) for f in fill]
-        angles = list(range(0, int(self.degrees[1]), 90))
-        angle = angles[torch.randint(len(angles), (1,))]
-        image = F.rotate(image, angle, self.resample, self.expand, self.center, fill)
-        if target is not None:
-            target["masks"] = F.rotate(target["masks"], angle)
-            try:
-                target["boxes"] = masks_to_boxes(target["masks"])
-            except:
-                print(target)
-                image.save("error.jpg")
-                target["boxes"] = masks_to_boxes(target["masks"])
-        return image, target
 
 class PILToTensor(nn.Module):
     def forward(
@@ -95,14 +53,17 @@ class PILToTensor(nn.Module):
         return image, target
 
 
-class ConvertImageDtype(nn.Module):
-    def __init__(self, dtype: torch.dtype) -> None:
+class ToDtype(nn.Module):
+    def __init__(self, dtype: torch.dtype, scale: bool = False) -> None:
         super().__init__()
         self.dtype = dtype
+        self.scale = scale
 
     def forward(
         self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
+        if not self.scale:
+            return image.to(dtype=self.dtype), target
         image = F.convert_image_dtype(image, self.dtype)
         return image, target
 
@@ -260,10 +221,10 @@ class RandomZoomOut(nn.Module):
 class RandomPhotometricDistort(nn.Module):
     def __init__(
         self,
-        contrast: Tuple[float] = (0.5, 1.5),
-        saturation: Tuple[float] = (0.5, 1.5),
-        hue: Tuple[float] = (-0.05, 0.05),
-        brightness: Tuple[float] = (0.875, 1.125),
+        contrast: Tuple[float, float] = (0.5, 1.5),
+        saturation: Tuple[float, float] = (0.5, 1.5),
+        hue: Tuple[float, float] = (-0.05, 0.05),
+        brightness: Tuple[float, float] = (0.875, 1.125),
         p: float = 0.5,
     ):
         super().__init__()
@@ -321,6 +282,7 @@ class ScaleJitter(nn.Module):
     """Randomly resizes the image and its bounding boxes  within the specified scale range.
     The class implements the Scale Jitter augmentation as described in the paper
     `"Simple Copy-Paste is a Strong Data Augmentation Method for Instance Segmentation" <https://arxiv.org/abs/2012.07177>`_.
+
     Args:
         target_size (tuple of ints): The target size for the transform provided in (height, weight) format.
         scale_range (tuple of ints): scaling factor interval, e.g (a, b), then scale is randomly sampled from the
@@ -334,11 +296,13 @@ class ScaleJitter(nn.Module):
         target_size: Tuple[int, int],
         scale_range: Tuple[float, float] = (0.1, 2.0),
         interpolation: InterpolationMode = InterpolationMode.BILINEAR,
+        antialias=True,
     ):
         super().__init__()
         self.target_size = target_size
         self.scale_range = scale_range
         self.interpolation = interpolation
+        self.antialias = antialias
 
     def forward(
         self, image: Tensor, target: Optional[Dict[str, Tensor]] = None
@@ -356,14 +320,17 @@ class ScaleJitter(nn.Module):
         new_width = int(orig_width * r)
         new_height = int(orig_height * r)
 
-        image = F.resize(image, [new_height, new_width], interpolation=self.interpolation)
+        image = F.resize(image, [new_height, new_width], interpolation=self.interpolation, antialias=self.antialias)
 
         if target is not None:
             target["boxes"][:, 0::2] *= new_width / orig_width
             target["boxes"][:, 1::2] *= new_height / orig_height
             if "masks" in target:
                 target["masks"] = F.resize(
-                    target["masks"], [new_height, new_width], interpolation=InterpolationMode.NEAREST
+                    target["masks"],
+                    [new_height, new_width],
+                    interpolation=InterpolationMode.NEAREST,
+                    antialias=self.antialias,
                 )
 
         return image, target
@@ -590,7 +557,6 @@ class SimpleCopyPaste(torch.nn.Module):
     def forward(
         self, images: List[torch.Tensor], targets: List[Dict[str, Tensor]]
     ) -> Tuple[List[torch.Tensor], List[Dict[str, Tensor]]]:
-        print(images)
         torch._assert(
             isinstance(images, (list, tuple)) and all([isinstance(v, torch.Tensor) for v in images]),
             "images should be a list of tensors",

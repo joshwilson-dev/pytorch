@@ -189,4 +189,9 @@ def create_common_coco_eval(coco_eval, img_ids, eval_imgs):
 def evaluate(imgs):
     with redirect_stdout(io.StringIO()):
         imgs.evaluate()
+    for i in range(len(imgs.evalImgs)): #JW
+        if imgs.evalImgs[i] != None: #JW
+            img_id = imgs.evalImgs[i]['image_id'] #JW
+            cat_id = imgs.evalImgs[i]['category_id'] #JW
+            imgs.evalImgs[i]['ious'] = imgs.ious[(img_id, cat_id)] #JW
     return imgs.params.imgIds, np.asarray(imgs.evalImgs).reshape(-1, len(imgs.params.areaRng), len(imgs.params.imgIds))

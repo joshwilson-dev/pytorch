@@ -1,23 +1,4 @@
-################
-#### Header ####
-################
-
-# Title: Add GSD to Annotation
-# Author: Josh Wilson
-# Date: 26-12-2022
-# Description: 
-# This script runs through sub-dirs of the selected directory
-# looking for images with annotation files and adds the image
-# gsd to the flag key of the annotation
-
-###############
-#### Setup ####
-###############
-
 import os
-import tkinter
-from tkinter import filedialog
-from tkinter import messagebox
 import json
 from PIL import Image
 import piexif
@@ -28,20 +9,6 @@ from pandas import json_normalize
 #################
 #### Content ####
 #################
-
-# create function for user to select dir
-root = tkinter.Tk()
-root.withdraw()
-
-def search_for_file_path ():
-    currdir = os.getcwd()
-    tempdir = filedialog.askdirectory(
-        parent=root,
-        initialdir=currdir,
-        title='Please select a directory')
-    if len(tempdir) > 0:
-        print ("You chose: %s" % tempdir)
-    return tempdir
 
 def degrees(tag):
     d = tag[0][0] / tag[0][1]
@@ -86,10 +53,11 @@ def get_elevation(latitude, longitude):
 
 def get_gsd(exif, camera, height):
     image_width = exif["Exif"][piexif.ExifIFD.PixelXDimension]
-    image_length = exif["Exif"][piexif.ExifIFD.PixelYDimension]
-    sensor_width, sensor_length = sensor_size[camera]
+    image_height = exif["Exif"][piexif.ExifIFD.PixelYDimension]
     focal_length = exif["Exif"][piexif.ExifIFD.FocalLength][0] / exif["Exif"][piexif.ExifIFD.FocalLength][1]
-    pixel_pitch = max(sensor_width / image_width, sensor_length / image_length)
+    if camera == "M3E" and image_height == 3000: camera = "M3EZ"
+    sensor_width, sensor_length = sensor_size[camera]
+    pixel_pitch = max(sensor_width / image_width, sensor_length / image_height)
     # calculate gsd
     gsd = height * pixel_pitch / focal_length
     return gsd
@@ -115,137 +83,148 @@ sensor_size = {
     "Survey2_RGB": [6.17472, 4.63104],
     "ILCE-7R": [35.9, 24],
     "DSC-RX1": [35.8, 23.8],
-    "iXU150": [53.4, 40]
+    "iXU150": [53.4, 40],
+    "M30T": [6.4, 4.8],
+    "MAVIC2-ENTERPRISE-ADVANCED": [6.4, 4.8],
+    "M3EZ": [6.4, 4.8],
+    "M3E": [17.3, 13]
     }
 
-file_path_variable = search_for_file_path()
+root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBD"
+# root = "C:/Users/uqjwil54/Documents/Projects/bird-detector/images"
+# root = "C:/Users/uqjwil54/Documents/Projects/object-detection-inference/images"
 
-# did the user select a dir or cancel?
-if len(file_path_variable) > 0:
-    # confirm dir with user
-    check = messagebox.askquestion(
-        "CONFIRM",
-        "Are you sure you want to add gsd to the annotations in:\n" + file_path_variable)
-    if check =="yes":
-        os.chdir(file_path_variable)
-        # iterate through files in dir
-        for root, dirs, files in os.walk(os.getcwd()):
-            for file in files:
-                # if "fully annotated" in root or "partially annotated" in root or "background" in root:
-                    if file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
-                        # print("Adding metrics to: ", file)
-                        image_file_path = os.path.join(root, file)
-                        annotation_file = os.path.splitext(file)[0] + ".json"
-                        annotation_file_path = os.path.join(root, annotation_file)
-                        # get the gsd & associated metrics
-                        image = Image.open(image_file_path)
-                        exif = piexif.load(image.info['exif'])
-                        # print(exif)
-                        if os.path.exists(annotation_file_path):
-                            annotation = json.load(open(annotation_file_path))
-                        else:
-                            print("\tAnnotation doesn't exist, skipping: ", file)
+new = False
+os.chdir(root)
+# iterate through files in dir
+for root, dirs, files in os.walk(os.getcwd()):
+    for file in files:
+        if "fully annotated" in root or "background" in root:
+            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
+                # print("Adding metrics to: ", file)
+                image_file_path = os.path.join(root, file)
+                annotation_file = os.path.splitext(file)[0] + ".json"
+                annotation_file_path = os.path.join(root, annotation_file)
+                # get the gsd & associated metrics
+                image = Image.open(image_file_path)
+                try:
+                    exif = piexif.load(image.info['exif'])
+                except:
+                    print("\t Couldn't get exif, skipping: ", file)
+                    continue
+
+                # print(exif)
+                if os.path.exists(annotation_file_path):
+                    annotation = json.load(open(annotation_file_path))
+                else:
+                    print("\tAnnotation doesn't exist, skipping: ", file)
+                    continue
+
+                # get the camera
+                try:
+                    if new == True: error
+                    camera = annotation["camera"]
+                    # print("\tGot camera from annotation: ", camera)
+                except:
+                    # print("\tCouldn't get camera from annotation")
+                    try:
+                        camera = exif["0th"][piexif.ImageIFD.Model].decode("utf-8").rstrip('\x00')
+                        # print("\tGot camera from exif: ", camera)
+                    except:
+                        print("\t Couldn't get camera, skipping: ", file)
+                        continue
+
+                # get the altitude, latitude, and longitude
+                try:
+                    if new == True: error
+                    altitude = annotation["altitude"]
+                    latitude = annotation["latitude"]
+                    longitude = annotation["longitude"]
+                    # print("\tAltitude, latitude, and longitude already in annotation")
+                except:
+                    # print("\tCouldn't get altitude, latitude, and longitude from annotation")
+                    try:
+                        altitude, latitude, longitude = get_gps(exif)
+                        # print("\tGot altitude, latitude, and longitude from exif")
+                    except:
+                        print("\t Couldn't get altitude, latitude, and longitude, skipping: ", file)
+                        continue
+                
+                # get the gsd
+                try:
+                    if new == True: error
+                    gsd = annotation["gsd"]
+                    # print("\tGSD already in annotation")
+                except:
+                    # print("\tCouldn't get GSD from annotation")
+                    try:
+                        # get xmp information
+                        f = open(image_file_path, 'rb')
+                        d = f.read()
+                        xmp_start = d.find(b'<x:xmpmeta')
+                        xmp_end = d.find(b'</x:xmpmeta')
+                        xmp_str = (d[xmp_start:xmp_end+12]).lower()
+                        # print(xmp_str)
+                        # Extract dji info
+                        dji_xmp_keys = ['relativealtitude']
+                        dji_xmp = {}
+                        for key in dji_xmp_keys:
+                            search_str = (key).encode("UTF-8")
+                            value_start = xmp_str.find(search_str)
+                            value = re.search(b"(\-|\+)[0-9]+.[0-9]+", xmp_str[value_start:]).group(0)
+                            dji_xmp[key] = float(value.decode('UTF-8'))
+                        height = dji_xmp["relativealtitude"]
+                        # print("\tGot height from xmp")
+                    except:
+                        # print("\tCouldn't get height from xmp")
+                        try:
+                            elevation = get_elevation(latitude, longitude)
+                            height = altitude - elevation
+                            # print("\tGot height from EXIF")
+                        except:
+                            # print("\tCouldn't get height from exif")
+                            print("\tCouldn't determine height, skipping: ", file)
                             continue
+                    # print("\tCalculating GSD...")
+                    try:
+                        gsd = get_gsd(exif, camera, height)
+                        # print("\tGot GSD from exif")
+                    except:
+                        print("\tCouldn't calculate GSD, skipping: ", file)
+                        continue
+                # check if the annotation is complete
+                try:
+                    if new == True: error
+                    complete = annotation["complete"]
+                    # print("\tComplete already in annotation")
+                except:
+                    # print("\tCouldn't get complete from annotation")
+                    if "partially annotated" in root:
+                        complete = "false"
+                    else: complete = "true"
+                    # print("\tGot complete from directory")
+                # get the date
+                try:
+                    if new == True: error
+                    datetime = annotation["datetime"]
+                    # print("\tdatetime already in annotation")
+                except:
+                    # print("\tCouldn't get datetime from annotation")
+                    datetime = exif["Exif"][piexif.ExifIFD.DateTimeDigitized].decode("utf-8")
+                    # print("\tGot datetime from exif")
 
-                        # get the camera
-                        try:
-                            camera = annotation["camera"]
-                            # print("\tGot camera from annotation: ", camera)
-                        except:
-                            # print("\tCouldn't get camera from annotation")
-                            try:
-                                camera = exif["0th"][piexif.ImageIFD.Model].decode("utf-8").rstrip('\x00')
-                                # print("\tGot camera from exif: ", camera)
-                            except:
-                                print("\t Couldn't get camera, skipping: ", file)
-                                continue
+                # add metrics to annotation
+                if "christian_pfeifer" in root: gsd = int(file[:3])/1000
+                annotation["gsd"] = gsd
+                annotation["camera"] = camera
+                annotation["altitude"] = altitude
+                annotation["latitude"] = latitude
+                annotation["longitude"] = longitude
+                annotation["complete"] = complete
+                annotation["datetime"] = datetime
 
-                        # get the altitude, latitude, and longitude
-                        try:
-                            altitude = annotation["altitude"]
-                            latitude = annotation["latitude"]
-                            longitude = annotation["longitude"]
-                            # print("\tAltitude, latitude, and longitude already in annotation")
-                        except:
-                            # print("\tCouldn't get altitude, latitude, and longitude from annotation")
-                            try:
-                                altitude, latitude, longitude = get_gps(exif)
-                                # print("\tGot altitude, latitude, and longitude from exif")
-                            except:
-                                print("\t Couldn't get altitude, latitude, and longitude, skipping: ", file)
-                                continue
-                        
-                        # get the gsd
-                        try:
-                            gsd = annotation["gsd"]
-                            # print("\tGSD already in annotation")
-                        except:
-                            # print("\tCouldn't get GSD from annotation")
-                            try:
-                                # get xmp information
-                                f = open(image_file_path, 'rb')
-                                d = f.read()
-                                xmp_start = d.find(b'<x:xmpmeta')
-                                xmp_end = d.find(b'</x:xmpmeta')
-                                xmp_str = (d[xmp_start:xmp_end+12]).lower()
-                                # print(xmp_str)
-                                # Extract dji info
-                                dji_xmp_keys = ['relativealtitude']
-                                dji_xmp = {}
-                                for key in dji_xmp_keys:
-                                    search_str = (key).encode("UTF-8")
-                                    value_start = xmp_str.find(search_str)
-                                    value = re.search(b"(\-|\+)[0-9]+.[0-9]+", xmp_str[value_start:]).group(0)
-                                    dji_xmp[key] = float(value.decode('UTF-8'))
-                                height = dji_xmp["relativealtitude"]
-                                # print("\tGot height from xmp")
-                            except:
-                                # print("\tCouldn't get height from xmp")
-                                try:
-                                    elevation = get_elevation(latitude, longitude)
-                                    height = altitude - elevation
-                                    # print("\tGot height from EXIF")
-                                except:
-                                    # print("\tCouldn't get height from exif")
-                                    print("\tCouldn't determine height, skipping: ", file)
-                                    continue
-                            # print("\tCalculating GSD...")
-                            try:
-                                gsd = get_gsd(exif, camera, height)
-                                # print("\tGot GSD from exif")
-                            except:
-                                print("\tCouldn't calculate GSD, skipping: ", file)
-                                continue
-                        # check if the annotation is complete
-                        try:
-                            complete = annotation["complete"]
-                            # print("\tComplete already in annotation")
-                        except:
-                            # print("\tCouldn't get complete from annotation")
-                            if "partially annotated" in root:
-                                complete = "false"
-                            else: complete = "true"
-                            # print("\tGot complete from directory")
-                        # get the date
-                        try:
-                            datetime = annotation["datetime"]
-                            # print("\tdatetime already in annotation")
-                        except:
-                            # print("\tCouldn't get datetime from annotation")
-                            datetime = exif["Exif"][piexif.ExifIFD.DateTimeDigitized].decode("utf-8")
-                            # print("\tGot datetime from exif")
- 
-                        # add metrics to annotation
-                        annotation["gsd"] = gsd
-                        annotation["camera"] = camera
-                        annotation["altitude"] = altitude
-                        annotation["latitude"] = latitude
-                        annotation["longitude"] = longitude
-                        annotation["complete"] = complete
-                        annotation["datetime"] = datetime
-
-                        # save annotation
-                        annotation = json.dumps(annotation, indent = 2).replace('"null"', 'null')
-                        with open(annotation_file_path, 'w') as annotation_file:
-                            annotation_file.write(annotation)
-                        # print("\tWrote metrics to annotation")
+                # save annotation
+                annotation = json.dumps(annotation, indent = 2).replace('"null"', 'null')
+                with open(annotation_file_path, 'w') as annotation_file:
+                    annotation_file.write(annotation)
+                # print("\tWrote metrics to annotation")

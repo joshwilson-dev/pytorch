@@ -1,19 +1,3 @@
-################
-#### Header ####
-################
-
-# Title: Add GSD to Annotation
-# Author: Josh Wilson
-# Date: 26-12-2022
-# Description: 
-# This script runs through sub-dirs of the selected directory
-# looking for images with annotation files and adds the image
-# gsd to the flag key of the annotation
-
-###############
-#### Setup ####
-###############
-
 import os
 import tkinter
 from tkinter import filedialog
@@ -22,12 +6,7 @@ from requests import get
 from pandas import json_normalize
 import piexif
 from fractions import Fraction
-import re
 from PIL import Image
-
-#################
-#### Content ####
-#################
 
 # create function for user to select dir
 root = tkinter.Tk()
@@ -112,11 +91,48 @@ def get_elevation(latitude, longitude):
         elevation = None
     return elevation
 
-# latitude, longitude = -33.313854, 146.381643 
-latitude, longitude  = -30.085742, 151.782221
-height = 40
+def set_camera_model(file_name, camera, exif_dict):
+    image_ifd = {piexif.ImageIFD.Model: camera}
+    exif_dict["0th"] = image_ifd
+    exif_bytes = piexif.dump(exif_dict)
+    piexif.insert(exif_bytes, file_name)
+
+def set_image_size_fl_dt(file_name, image_width, image_height, focal_length, datetime, exif_dict):
+    exif_ifd = {piexif.ExifIFD.PixelXDimension: image_width,
+                piexif.ExifIFD.PixelYDimension: image_height,
+                piexif.ExifIFD.FocalLength: focal_length,
+                piexif.ExifIFD.DateTimeDigitized: datetime}
+    exif_dict["Exif"] = exif_ifd
+    exif_bytes = piexif.dump(exif_dict)
+    piexif.insert(exif_bytes, file_name)
+
+# latitude, longitude = -33.313854, 146.381643 # john lake
+# latitude, longitude  = -30.085742, 151.782221 # john swamp
+# latitude, longitude  = 53.690568, 23.304776 # white stork
+# latitude, longitude = -51.076046, -61.084785 # GJ SEblob
+# latitude, longitude = -51.033843, -61.230824 # SJ Hump
+# latitude, longitude = -51.037927, -61.220572 # SJ Blob
+# latitude, longitude = -51.031877, -61.231642 # SJ Bubble
+# latitude, longitude = -51.066962, -61.107015 # GJ Middle Third
+latitude, longitude = 44.766667, 12.250000 # Po Delta
+
+height = 33.881
+# height = 22 # white stork
+
+# camera = "FC330" # DJI P4
+# camera = "FC6310" # DJI PP4
+camera = "FC7203" # DJI Mini
+
+# focal_length = (361, 100) # white stork
+# focal_length = (880, 100) # DJI PP4
+focal_length = (449, 100) # DJI Mini
+
+# datetime = "2018:06:22 15:12:44" # white stork
+datetime = "2020:06:30 14:36:23"
+
 elevation = get_elevation(latitude, longitude)
 altitude = height + elevation
+
 # did the user select a dir or cancel?
 if len(file_path_variable) > 0:
     # confirm dir with user
@@ -132,5 +148,11 @@ if len(file_path_variable) > 0:
                         print("Adding metrics to: ", file)
                         filepath = os.path.join(root, file)
                         image = Image.open(filepath)
-                        exif_dict = piexif.load(image.info['exif'])
+                        image_width, image_height = image.size
+                        try:
+                            exif_dict = piexif.load(image.info['exif'])
+                        except:
+                            exif_dict = {}
                         set_gps_location(file, latitude, longitude, altitude, exif_dict)
+                        set_camera_model(file, camera, exif_dict)
+                        set_image_size_fl_dt(file, image_width, image_height, focal_length, datetime, exif_dict)
