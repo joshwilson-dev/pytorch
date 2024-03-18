@@ -1,10 +1,8 @@
-/datasets
+/data
 /models
-/venv-pytorch
-/wiener
-/images
-/code/images
-/frontend/model_best_state_dict.pth
+/paper
+/resources
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
