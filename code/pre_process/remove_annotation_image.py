@@ -1,7 +1,7 @@
 import os
 import json
 
-root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBD"
+root = "data/original"
 os.chdir(root)
 # Iterate through files in dir and remove image data from annotation
 for root, dirs, files in os.walk(os.getcwd()):

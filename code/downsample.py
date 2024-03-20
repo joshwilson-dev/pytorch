@@ -61,38 +61,40 @@ def balance_instances(df, fg_max, fg_bg_ratio, ratio, buffer):
             pose_remainder -= n_pose_sample
             print("\t{}: {} of {}".format(pose, math.ceil(n_pose_sample), n_pose_total))
             
-            # Sample location as equally as possible within each pose 
-            unique_locations = list(pose_df.columns.unique(level = 'location'))
-            loc_remainder = n_pose_sample
-            for location in unique_locations:
-                loc_df = pose_df[location]
-                n_loc_total = loc_df.values.sum()
-                n_loc_sample = 0
-                index = unique_locations.index(location)
-                req_avg = loc_remainder/(len(unique_locations) - index)
-                if n_loc_total * ratio <= req_avg:
-                    n_loc_sample = n_loc_total * ratio
+            # Sample areas as equally as possible within each pose
+            unique_areas = list(pose_df.columns.unique(level = 'area_bins'))
+            area_remainder = n_pose_sample
+            for area in unique_areas:
+                area_df = pose_df[area]
+                n_area_total = area_df.values.sum()
+                n_area_sample = 0
+                index = unique_areas.index(area)
+                req_avg = area_remainder/(len(unique_areas) - index)
+                if n_area_total * ratio <= req_avg:
+                    n_area_sample = math.ceil(n_area_total * ratio)
                 else:
-                    n_loc_sample = req_avg
-                loc_remainder -= n_loc_sample
-                print("\t\t{}: {} of {}".format(location, math.ceil(n_loc_sample), n_loc_total))
-
-                # Sample areas as equally as possible within each location
-                unique_areas = list(loc_df.columns.unique(level = 'area_bins'))
-                area_remainder = n_loc_sample
-                for area in unique_areas:
-                    area_df = loc_df[area]
-                    n_area_total = area_df.values.sum()
-                    n_area_sample = 0
-                    index = unique_areas.index(area)
-                    req_avg = area_remainder/(len(unique_areas) - index)
-                    if n_area_total * ratio <= req_avg:
-                        n_area_sample = math.ceil(n_area_total * ratio)
-                    else:
-                        n_area_sample = math.ceil(req_avg)
-                    area_remainder -= n_area_sample
-                    print("\t\t\t{}: {} of {}".format(area, n_area_sample, n_area_total))
-                    model.Add(df[label][pose][location][area].dot(row_selection) <= n_area_sample)
+                    n_area_sample = math.ceil(req_avg)
+                area_remainder -= n_area_sample
+                print("\t\t\t{}: {} of {}".format(area, n_area_sample, n_area_total))
+                if label != "background":
+                    model.Add(df[label][pose][area].sum(axis=1).dot(row_selection) <= n_area_sample)
+                else:
+                    # Sample location as equally as possible within each pose 
+                    unique_locations = list(area_df.columns.unique(level = 'location'))
+                    loc_remainder = n_area_sample
+                    for location in unique_locations:
+                        loc_df = area_df[location]
+                        n_loc_total = loc_df.values.sum()
+                        n_loc_sample = 0
+                        index = unique_locations.index(location)
+                        req_avg = loc_remainder/(len(unique_locations) - index)
+                        if n_loc_total * ratio <= req_avg:
+                            n_loc_sample = math.ceil(n_loc_total * ratio)
+                        else:
+                            n_loc_sample = math.ceil(req_avg)
+                        loc_remainder -= n_loc_sample
+                        print("\t\t{}: {} of {}".format(location, math.ceil(n_loc_sample), n_loc_total))
+                        model.Add(df[label][pose][area][location].dot(row_selection) <= n_loc_sample)
 
     # Maximize the number of patches selected
     model.Maximize(sum(row_selection))
@@ -266,8 +268,7 @@ def save_dataset(train, test):
     return
 
 # Set root and setup directories
-root = "data/bird_2024_02_19/"
-# root = "datasets/trial/"
+root = "data/trial/"
 directories = ["train", "test", "annotations"]
 for directory in directories:
     path = os.path.join(root, "balanced", directory)
@@ -292,7 +293,7 @@ data = {k:[] for k in dataset_keys}
 
 
 # Extract information from each image
-for entry in os.scandir(os.path.join(root,"raw")):
+for entry in os.scandir(os.path.join(root,"consolidated")):
     if entry.path.endswith(".json"):
         print("Recording Patch Data From: ", entry.path)
 
@@ -300,7 +301,7 @@ for entry in os.scandir(os.path.join(root,"raw")):
         annotation = json.load(open(entry.path))
 
         # Load the image
-        imagepath = os.path.join(root, "raw", annotation["imagePath"])
+        imagepath = os.path.join(root, "consolidated", annotation["imagePath"])
         image = Image.open(imagepath)
         width, height = image.size
 
@@ -425,7 +426,7 @@ data = pd.DataFrame(data=data)
 data["dataset"] = "original"
 
 # Calculate location and area_cat
-bins = [0, 1000, 2000, 4000, 1e10]
+bins = list(range(500, 5001, 500)) + [1e10]
 data["area_bins"] = pd.cut(data['area'], bins).astype(str)
 data["location"] = data["latitude"].round(0).astype(str) + ", " + data["longitude"].round(0).astype(str)
 
@@ -451,12 +452,12 @@ instances_per_patch = (
     data
     .query("overlap >= @min_overlap")
     .query("included")
-    .groupby(['imagepath', 'patchpoints', 'label', 'pose', 'location', 'area_bins'])
+    .groupby(['imagepath', 'patchpoints', 'label', 'pose', 'area_bins', 'location'])
     .size()
     .reset_index(name='counts')
     .pivot_table(
         index=['imagepath', 'patchpoints'],
-        columns=['label', 'pose', 'location', 'area_bins'],
+        columns=['label', 'pose', 'area_bins', 'location'],
         values="counts",
         fill_value=0))
 

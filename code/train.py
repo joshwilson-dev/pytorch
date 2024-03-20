@@ -9,7 +9,6 @@ import engine
 import transforms
 import coco_utils
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
-import custom_transforms
 from torch.utils.tensorboard import SummaryWriter
 
 data_path = "datasets/bird_2024_02_20/balanced/"

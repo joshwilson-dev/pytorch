@@ -11,9 +11,9 @@ class_to_index = {value["name"]: key for key, value in index_to_class.items()}
 root = "data/original"
 os.chdir(root)
 
-if os.path.exists("input"):
-    shutil.rmtree("input")
-os.makedirs("input")
+if os.path.exists("consolidated"):
+    shutil.rmtree("consolidated")
+os.makedirs("consolidated")
 
 # iterate through files in dir
 for root, dirs, files in os.walk(os.getcwd()):
@@ -35,9 +35,9 @@ for root, dirs, files in os.walk(os.getcwd()):
 
                 # Output paths
                 annotation_output_name = md5 + '.json'
-                annotation_output_path = os.path.join("input", annotation_output_name)
+                annotation_output_path = os.path.join("consolidated", annotation_output_name)
                 image_output_name = md5 + '.jpg'
-                image_output_path = os.path.join("input", image_output_name)
+                image_output_path = os.path.join("consolidated", image_output_name)
 
                 # Update annotation
                 annotation["imagePath"] = image_output_name
