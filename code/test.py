@@ -10,12 +10,10 @@ import evaluate
 import pandas as pd
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
-# data_path = "datasets/bird_2024_02_13/balanced"
-data_path = "datasets/bird_2024_02_19/balanced"
-# data_path = "datasets/trial/balanced"
-output_dir = "models/bird_2024_02_19"
-img_folder = os.path.join(data_path, "test")
-ann_file = os.path.join(data_path, "annotations/test.json")
+data_path = "data/balanced"
+output_dir = "models/bird_2024_03_21"
+img_folder = os.path.join(data_path, "test_artificial")
+ann_file = os.path.join(data_path, "annotations/test_artificial.json")
 # img_folder = os.path.join(data_path, "train")
 # ann_file = os.path.join(data_path, "annotations/train.json")
 checkpoint_name = os.path.join(output_dir, "model.pth")
@@ -25,14 +23,13 @@ n_classes = 94
 
 min_dim = 0
 max_dim = 525
-steps = 29
+steps = 21
 step_size = int((max_dim - min_dim)/steps)
 dims = range(min_dim, max_dim, step_size)
-# areaRng = [[dim, 1e5 ** 2] for dim in dims]
-# areaRng = [[0, 1e5**2]] + [[dim, dim + step_size] for dim in dims]
-# areaRngLbl = ['all'] + [str(dim[1]) for dim in areaRng]
-areaRng = [[0, 1e5**2]]
-areaRngLbl = ['all']
+areaRng = [[0, 1e5**2]] + [[dim, dim + step_size] for dim in dims]
+areaRngLbl = ['all'] + [str(dim[1]) for dim in areaRng]
+# areaRng = [[0, 1e5**2]]
+# areaRngLbl = ['all']
 kwargs = {
     "iou_types": ['bbox'],
     "useCats": 0,
@@ -63,7 +60,7 @@ def save_eval(results):
                             result_dict['recall'].append(recall[i, c, a, m])
                             result_dict['scores'].append(scores[i, r, c, a, m])
                             result_dict['iou_type'].append(iou_type)
-    with open(os.path.join(output_dir, "eval.csv"), "w", newline='') as outfile:
+    with open(os.path.join(output_dir, "eval-artificial-0.csv"), "w", newline='') as outfile:
         writer = csv.writer(outfile)
         writer.writerow(result_dict.keys())
         writer.writerows(zip(*result_dict.values()))
@@ -140,7 +137,7 @@ def save_evalImgs(results, dataset_test):
                     }
                     image_results.append(image_id_results)
     df = pd.DataFrame(image_results)
-    df.to_csv(os.path.join(output_dir, "evalimgs.csv"))
+    df.to_csv(os.path.join(output_dir, "evalimgs-artificial-0.csv"))
     return
 
 def main():
