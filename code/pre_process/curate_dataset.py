@@ -3,7 +3,7 @@ import json
 import csv
 import copy
 
-root = "data/original"
+root = "data/consolidated"
 
 results = {
     "base": [], "file": [], "datetime": [], "shape_type": [],
@@ -13,7 +13,7 @@ results = {
 
 for base, dirs, files in os.walk(root):
     for file in files:
-        if "fully annotated" in base or "background" in base:
+        # if "fully annotated" in base or "background" in base:
             if file.endswith(".json"):
                 annotation = json.load(open(os.path.join(base, file)))
                 gsd = annotation["gsd"]
@@ -65,17 +65,15 @@ for base, dirs, files in os.walk(root):
                             results["age"].append(label["age"])
                             results["class"].append("aves")
 
-                            # results["order"].append(label["order"])
-                            # results["family"].append(label["family"])
-                            # results["genus"].append(label["genus"])
-                            # results["species"].append(label["species"])
-                            # results["pose"].append("")
-                            # results["obscured"].append("")
+                            results["order"].append(label["order"])
+                            results["family"].append(label["family"])
+                            results["genus"].append(label["genus"])
+                            results["species"].append(label["species"])
 
-                            results["order"].append("")
-                            results["family"].append("")
-                            results["genus"].append("")
-                            results["species"].append("")
+                            # results["order"].append("")
+                            # results["family"].append("")
+                            # results["genus"].append("")
+                            # results["species"].append("")
                             results["pose"].append(label["pose"])
                             results["obscured"].append(label["obscured"])
 

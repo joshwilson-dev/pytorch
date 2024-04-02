@@ -11,7 +11,7 @@ import coco_utils
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torch.utils.tensorboard import SummaryWriter
 
-data_path = "datasets/bird_2024_02_20/balanced/"
+data_path = "data/balanced/"
 model_name = "FasterRCNN"
 weights = None
 backbone_name = "resnet101"
@@ -41,8 +41,8 @@ def main():
     train_transforms = transforms.Compose([
         coco_utils.ConvertCocoPolysToMask(),
         transforms.RandomPhotometricDistort(),
-        custom_transforms.RandomVerticalFlip(),
-        custom_transforms.RandomRotationNinety(360),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotationNinety(360),
         transforms.RandomHorizontalFlip(),
         transforms.PILToTensor(),
         transforms.ToDtype(torch.float, scale=True)])

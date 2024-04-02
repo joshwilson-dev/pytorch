@@ -62,6 +62,13 @@ def get_gsd(exif, camera, height):
     gsd = height * pixel_pitch / focal_length
     return gsd
 
+def get_uav(camera):
+    uav = uavs[camera]
+    if camera == "ILCE-7R":
+        if "ann" in root: uav = "DJI S1000+"
+        else: uav = "UAVER Avian-P or Drone Metrex Topodrone-100"
+    return uav
+
 def is_float(string):
     try:
         string = float(string)
@@ -89,6 +96,28 @@ sensor_size = {
     "M3EZ": [6.4, 4.8],
     "M3E": [17.3, 13]
     }
+
+uavs = {
+    "FC220": "DJI Mavic Pro",
+    "FC330": "DJI Phantom 4",
+    "FC300C": "DJI Phantom 3 Standard",
+    "FC7203": "DJI Mavic Mini",
+    "FC6520": "DJI Matrice 210",
+    "FC6310": "DJI Phantom 4 Pro",
+    "FC3411": "DJI Air 2S",
+    "L1D-20c": "DJI Mavic 2 Pro",
+    "Canon PowerShot G15": "Bormatec Ninox",
+    "NX500": "Mikokopter MK",
+    "Canon PowerShot S100": "Bormatec Ninox",
+    "Survey2_RGB": "Bormatec Ninox",
+    "ILCE-7R": "DJI S1000+ or UAVER Avian-P or Drone Metrex Topodrone-100",
+    "DSC-RX1": "FoxTech Kraken-130",
+    "iXU150": "FoxTech Kraken-130",
+    "M30T": "DJI Matrice 30",
+    "MAVIC2-ENTERPRISE-ADVANCED": "DJI Mavic 2 Enterprise Advanced",
+    "M3EZ": "DJI Mavic 3 Enterprise Zoom",
+    "M3E": "DJI Mavic 3 Enterprise"
+}
 
 root = "data/original"
 
@@ -130,6 +159,17 @@ for root, dirs, files in os.walk(os.getcwd()):
                         # print("\tGot camera from exif: ", camera)
                     except:
                         print("\t Couldn't get camera, skipping: ", file)
+                        continue
+                # get the uav
+                try:
+                    if new == True: error
+                    uav = annotation[uav]
+                except:
+                    try:
+                        uav = uavs[camera]
+                        # print("\tGot uav: ", uav)
+                    except:
+                        print("\t Couldn't get uav, skipping: ", file)
                         continue
 
                 # get the altitude, latitude, and longitude
@@ -222,7 +262,7 @@ for root, dirs, files in os.walk(os.getcwd()):
                 annotation["datetime"] = datetime
 
                 # save annotation
-                annotation = json.dumps(annotation, indent = 2).replace('"null"', 'null')
-                with open(annotation_file_path, 'w') as annotation_file:
-                    annotation_file.write(annotation)
+                # annotation = json.dumps(annotation, indent = 2).replace('"null"', 'null')
+                # with open(annotation_file_path, 'w') as annotation_file:
+                #     annotation_file.write(annotation)
                 # print("\tWrote metrics to annotation")
