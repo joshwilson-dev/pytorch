@@ -33,7 +33,7 @@ data <- cocoeval %>%
     filter(
         iouType == "bbox",
         iouThr == 0.5,
-        area == "[0, 10000000000]",
+        area == "[0, 500]",
         maxDet == 100,
         precision != -1)
 

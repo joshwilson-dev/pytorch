@@ -33,14 +33,14 @@ by <- 500
 pixel_bins = seq(0, 5000, by = by)
 AP <- cocoeval %>%
     filter(
-        dataset == "validation",
+        dataset == "test",
         iouType == "bbox",
         iouThr == 0.5,
         area != "[0, 10000000000]",
         area != "[5000, 10000000000]",
         maxDet == 100,
-        precision != -1,
-        catId != -1) %>%
+        catId != -1,
+        precision != -1) %>%
     mutate(
         pixels = as.numeric(str_extract(area, "\\d+(?=\\])")),
         pixels = (2 * pixels - by)/2) %>%
@@ -65,11 +65,12 @@ train <- dataset %>%
     filter(!is.na(pixels)) %>%
     group_by(class, pixels) %>%
     summarise(
-        train_locations = length(unique(location)),
+        train_locations = sum(),
         area_avg = mean(area * gsd**2),
         train_instances = n()) %>%
     merge(catId_to_class, by = "class")
 length(unique(train$class))
+
 
 # Number of similar classes based on size and colour
 similar_classes <- train %>%
@@ -84,10 +85,10 @@ similar_classes <- train %>%
 train <- train %>%
     select(-plumage, -catId, -area_avg)
 
-# Get validation metrics
-validation <- dataset %>%
+# Get test metrics
+test <- dataset %>%
     filter(
-        dataset == "validation",
+        dataset == "test",
         obscured == "no",
         overlap >= 0.7,
         species != "unknown",
@@ -101,18 +102,18 @@ validation <- dataset %>%
     filter(!is.na(pixels)) %>%
     group_by(class, pixels) %>%
     summarise(
-        validation_instances = n(),
+        test_instances = n(),
         area_avg = mean(area * gsd**2),
         pixel_avg = mean(area),
         resting_proportion = mean(pose))
-length(unique(validation$class))
+length(unique(test$class))
 
 # Merge train with AP and prepare for beta regression
 performance <- AP %>%
     merge(train) %>%
-    merge(validation) %>%
+    merge(test) %>%
     merge(similar_classes) %>%
-    filter(validation_instances >= 3)
+    filter(test_instances >= 3)
     # filter(AP_sd > 0)
 
 length(unique(performance$class))

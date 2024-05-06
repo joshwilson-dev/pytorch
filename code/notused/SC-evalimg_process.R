@@ -28,20 +28,15 @@ catId_to_class <- read_excel(path = root, sheet = "ST5-catId_to_class") %>%
 
 # Calculate performance metrics at threshold
 data <- cocoevalimg %>%
-    filter(
-        dataset == 'test',
-        area == "[0, 10000000000]") %>%
+    filter(dataset == 'test', area == "[0, 500]", Ignore == 0) %>%
     mutate(error = case_when(
         det_type == 'gt' ~ '',
         Matches > 0 ~ 'TP',
         T ~ 'FP')) %>%
-        # det_type == 'gt' ~ 'FN',
-        # det_type != 'gt' ~ 'FP')) %>%
     group_by(catId) %>%
-    arrange(catId, desc(Scores), det_type) %>%
-    mutate(gt = sum(det_type == "gt")) %>%
-    # filter(det_type == 'dt') %>%
+    arrange(catId, desc(Scores)) %>%
     mutate(
+        gt = sum(det_type == "gt"),
         tp = case_when(error == 'TP' ~ 1, T ~ 0),
         fp = case_when(error == 'FP' ~ 1, T ~ 0),
         tp = cumsum(tp),
