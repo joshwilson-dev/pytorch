@@ -69,11 +69,11 @@ def create_annotation(prediction, image, filename):
     image = F.to_pil_image(image)
     width, height = image.size
     filename = os.path.splitext(filename[0])[0]
-    for box, label, score in zip(prediction['boxes'], prediction["labels"], prediction["scores"]):
+    for box, label, score, class_scores in zip(prediction['boxes'], prediction["labels"], prediction["scores"], prediction["class_scores"]):
         box = box.tolist()
         label = index_to_class[str(label.item())]
         # label = json.dumps(label).replace('"', "'") + ": " + str(round(score.tolist(), 2))
-        label = label["name"] + ": " + str(round(score.tolist(), 2))
+        label = "bird: " + str(round(sum(class_scores).tolist(), 2)) + " - " + label["name"] + ": " + str(round(score.tolist(), 2))
         shapes.append({
             "label": label,
             "points": [[box[0], box[1]], [box[2], box[3]]],
@@ -123,12 +123,12 @@ class Custom_Dataset():
         self.img_names = [img for img in os.listdir(img_dir) if img.lower().endswith('.jpg')]
         self.crop_size = crop_size
         self.overlap = overlap
-        gsds = [0.0048] * len(self.img_names)
-        # gsds = []
-        # for name in self.img_names:
-        #     ann_name = os.path.splitext(name)[0]+'.json'
-        #     ann = json.load(open(img_dir + ann_name))
-        #     gsds.append(ann["gsd"])
+        # gsds = [0.005] * len(self.img_names)
+        gsds = []
+        for name in self.img_names:
+            ann_name = os.path.splitext(name)[0]+'.json'
+            ann = json.load(open(img_dir + ann_name))
+            gsds.append(ann["gsd"])
         self.gsds = gsds
 
     def __getitem__(self, id):
@@ -141,18 +141,32 @@ class Custom_Dataset():
         scaled_width = int(width / scale)
         scaled_height = int(height / scale)
         scaled_image = image.resize((scaled_width, scaled_height))
-        # Crop the image into an grid with overlap
-        crops = []
-        overlap_width = self.overlap if self.crop_size < scaled_width else 0
-        overlap_height = self.overlap if self.crop_size < scaled_height else 0
 
-        for top in range(0, scaled_height, self.crop_size - overlap_height):
-            for left in range(0, scaled_width, self.crop_size - overlap_width):
+        # Crop the image into a grid with overlap
+        crops = []
+        if self.crop_size < scaled_width:
+            overlap_width = self.overlap
+        else:
+            overlap_width = 0
+            scaled_width = self.crop_size
+
+        if self.crop_size < scaled_height:
+            overlap_height = self.overlap 
+        else:
+            overlap_height = 0
+            scaled_height = self.crop_size
+        
+        top = 0
+        while top + overlap_height < scaled_height:
+            left = 0
+            while left + overlap_width < scaled_width:
                 # Crop and convert to tensor
                 cropped_img = F.crop(scaled_image, top, left, self.crop_size, self.crop_size)
                 cropped_img = F.to_tensor(cropped_img)[0]
                 crops.append(cropped_img)
-        return F.to_tensor(image)[0], crops, scaled_width, scaled_height, scale, filename
+                left += self.crop_size - overlap_width
+            top += self.crop_size - overlap_height
+        return F.to_tensor(image)[0], crops, scaled_width, scaled_height, scale, filename, overlap_width, overlap_height
 
     def __len__(self):
         return len(self.img_names)
@@ -167,7 +181,7 @@ def main():
     # Running model
     torch.set_num_threads(1)
     metric_logger = utils.MetricLogger(delimiter="  ")
-    for image, crops, width, height, scale, filename in metric_logger.log_every(data_loader, 100, "Inference:"):
+    for image, crops, width, height, scale, filename, overlap_width, overlap_height in metric_logger.log_every(data_loader, 100, "Inference:"):
         crops = [crop.to(device) for crop in crops]
 
         if torch.cuda.is_available(): torch.cuda.synchronize()
@@ -175,28 +189,33 @@ def main():
         # Run prediction in batches
         model_time = time.time()
         prediction = []
+        i = 0
         for img_batch in torch.split(torch.stack(crops), batchsize):
-            print(torch.cuda.get_device_properties(0).total_memory)
-            print(torch.cuda.memory_reserved(0))
-            print(torch.cuda.memory_allocated(0))
-            print("\n")
+            i += 1
+            # print(torch.cuda.get_device_properties(0).total_memory)
+            # print(torch.cuda.memory_reserved(0))
+            # print(torch.cuda.memory_allocated(0))
+            # print("\n")
             torch.cuda.empty_cache()
             batch_prediction = model(img_batch)
             batch_prediction = [{k: v.cpu().detach() for k, v in t.items()} for t in batch_prediction]
             prediction.extend(batch_prediction)
         model_time = time.time() - model_time
 
-        # Reject boxes near overlapping edges
-        for i, crop_prediction in enumerate(prediction):
-            top = (i // (int(width) // (crop_size - overlap) + 1)) * (crop_size - overlap)
-            left = (i % (int(width) // (crop_size - overlap) + 1)) * (crop_size - overlap)
-            prediction[i] = reject_boxes(crop_prediction, top, left, width, height)
-
-        # Adjust box coordinates based on the crop position
-        for i, crop_prediction in enumerate(prediction):
-            top = (i // (int(width) // (crop_size - overlap) + 1)) * (crop_size - overlap)
-            left = (i % (int(width) // (crop_size - overlap) + 1)) * (crop_size - overlap)
-            prediction[i] = adjust_boxes(crop_prediction, top, left)
+        # Adjust predictions due to grid splitting
+        top = 0
+        i = 0
+        while top + overlap_height < height:
+            left = 0
+            while left + overlap_width < width:
+                # print(i, width, height, overlap_height, overlap_width, top, left)
+                # Reject boxes near overlapping edges
+                prediction[i] = reject_boxes(prediction[i], top, left, width, height)
+                # Adjust box coordinates based on the crop position
+                prediction[i] = adjust_boxes(prediction[i], top, left)
+                left += int(crop_size - overlap_width)
+                i += 1
+            top += int(crop_size - overlap_height)
 
         # Combine crops into single prediction
         prediction = {
@@ -241,22 +260,36 @@ def main():
 
 # Setup
 Image.MAX_IMAGE_PIXELS = 1000000000
-output_dir = "outputs/"
+output_dir = "C:/Users/uqjwil54/Documents/Projects/DBBD/outputs/"
+# output_dir = "outputs/"
 if os.path.exists(output_dir):
     shutil.rmtree(output_dir)
 os.mkdir(output_dir)
-img_dir = "images/"
-model_path = "models/bird_2024_02_20/"
+
+kwargs = {
+    "rpn_pre_nms_top_n_test": 250,
+    "rpn_post_nms_top_n_test": 250,
+    "rpn_nms_thresh": 0.5,
+    "rpn_score_thresh": 0.5,
+    "box_detections_per_img": 100,
+    "box_nms_thresh": 0.2,
+    "bird_score_thresh": 0.75,
+    "class_score_thresh": 0.0}
+
+img_dir = "C:/Users/uqjwil54/Documents/Projects/DBBD/images/"
+model_path = "C:/Users/uqjwil54/Documents/Projects/DBBD/balanced-2024_05_01/model-2024_05_06/"
+# img_dir = "images/"
+# model_path = "models/bird-2024_04_29/"
 model_name = "FasterRCNN"
 backbone_name = "resnet101"
 checkpoint_name = "model.pth"
 device = torch.device("cuda")
 crop_size = 800
-overlap = 0
-margin = 0
+overlap = 200
+margin = 5
 target_gsd = 0.005
 batchsize = 1
-kwargs = json.load(open(os.path.join(model_path, "kwargs.json")))
+
 
 index_to_class = json.load(open(os.path.join(model_path, "index_to_class.json")))
 n_classes = len(index_to_class) + 1

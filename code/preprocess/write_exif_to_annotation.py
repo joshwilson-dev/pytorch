@@ -25,7 +25,7 @@ def get_gps(exif):
     # altitue
     altitude_tag = exif['GPS'][piexif.GPSIFD.GPSAltitude]
     # altitude_ref = exif['GPS'][piexif.GPSIFD.GPSAltitudeRef]
-    altitude = altitude_tag[0]/altitude_tag[1]
+    drone_altitude = altitude_tag[0]/altitude_tag[1]
     # below_sea_level = altitude_ref != 0
     # altitude = -altitude if below_sea_level else altitude
     # latitude
@@ -38,7 +38,7 @@ def get_gps(exif):
     longitude_ref = exif['GPS'][piexif.GPSIFD.GPSLongitudeRef].decode("utf-8")
     longitude = degrees(longitude_tag)
     longitude = -longitude if longitude_ref == 'W' else longitude
-    return altitude, latitude, longitude
+    return drone_altitude, latitude, longitude
 
 def get_elevation(latitude, longitude):
     # query = 'https://api.open-elevation.com/api/v1/lookup'f'?locations={latitude},{longitude}'
@@ -53,7 +53,7 @@ def get_elevation(latitude, longitude):
         elevation = None
     return elevation
 
-def get_gsd(exif, height, sensor_width, sensor_height, focal_length):
+def get_gsd(exif, drone_height, bird_height, sensor_width, sensor_height, focal_length):
     image_width = exif["Exif"][piexif.ExifIFD.PixelXDimension]
     image_height = exif["Exif"][piexif.ExifIFD.PixelYDimension]
     if "madeline_hayes" in root:
@@ -61,7 +61,7 @@ def get_gsd(exif, height, sensor_width, sensor_height, focal_length):
         image_height = 3648
     pixel_pitch = max(sensor_width / image_width, sensor_height / image_height)
     # calculate gsd
-    gsd = height * pixel_pitch / focal_length
+    gsd = (drone_height - bird_height) * pixel_pitch / focal_length
     return gsd
 
 def get_uav(camera):
@@ -178,29 +178,29 @@ for root, dirs, files in os.walk(os.getcwd()):
                         print("\t Couldn't get uav, skipping: ", file)
                         continue
 
-                # get the altitude, latitude, and longitude
+                # get the drone_altitude, latitude, and longitude
                 try:
                     if new == True: error
-                    altitude = annotation["altitude"]
+                    drone_altitude = annotation["drone_altitude"]
                     latitude = annotation["latitude"]
                     longitude = annotation["longitude"]
                     # print("\tAltitude, latitude, and longitude already in annotation")
                 except:
                     # print("\tCouldn't get altitude, latitude, and longitude from annotation")
                     try:
-                        altitude, latitude, longitude = get_gps(exif)
+                        drone_altitude, latitude, longitude = get_gps(exif)
                         # print("\tGot altitude, latitude, and longitude from exif")
                     except:
-                        print("\t Couldn't get altitude, latitude, and longitude, skipping: ", file)
+                        print("\t Couldn't get drone_altitude, latitude, and longitude, skipping: ", file)
                         continue
                 
-                # get the height
+                # get the drone height
                 try:
                     if new == True: error
-                    height = annotation["height"]
-                    # print("\tHeight already in annotation")
+                    drone_height = annotation["drone_height"]
+                    # print("\tDrone height already in annotation")
                 except:
-                    # print("\tCalculating Height...")
+                    # print("\tCalculating drone height...")
                     try:
                         # get xmp information
                         f = open(image_file_path, 'rb')
@@ -217,18 +217,26 @@ for root, dirs, files in os.walk(os.getcwd()):
                             value_start = xmp_str.find(search_str)
                             value = re.search(b"(\-|\+)[0-9]+.[0-9]+", xmp_str[value_start:]).group(0)
                             dji_xmp[key] = float(value.decode('UTF-8'))
-                        height = dji_xmp["relativealtitude"]
-                        # print("\tGot height from xmp")
+                        drone_height = dji_xmp["relativealtitude"]
+                        # print("\tGot drone_height from xmp")
                     except:
-                        # print("\tCouldn't get height from xmp")
+                        # print("\tCouldn't get drone_height from xmp")
                         try:
                             elevation = get_elevation(latitude, longitude)
-                            height = altitude - elevation
-                            # print("\tGot height from EXIF")
+                            drone_height = drone_altitude - elevation
+                            # print("\tGot drone_height from EXIF")
                         except:
-                            # print("\tCouldn't get height from exif")
-                            print("\tCouldn't determine height, skipping: ", file)
+                            # print("\tCouldn't get drone_height from exif")
+                            print("\tCouldn't determine drone_height, skipping: ", file)
                             continue
+                # get the bird height
+                try:
+                    if new == True: error
+                    bird_height = annotation["bird_height"]
+                    # print("\tBird height already in annotation")
+                except:
+                    if "in_trees" in root: bird_height = 10
+                    else: bird_height = 0
                
                 # get the sensor dimensions
                 try:
@@ -259,7 +267,7 @@ for root, dirs, files in os.walk(os.getcwd()):
                 except:
                     # print("\tCalculating GSD...")
                     try:
-                        gsd = get_gsd(exif, camera, height)
+                        gsd = get_gsd(exif, drone_height, bird_height, sensor_width, sensor_height, focal_length)
                         # print("\tGot GSD from exif")
                     except:
                         print("\tCouldn't calculate GSD, skipping: ", file)
@@ -280,8 +288,9 @@ for root, dirs, files in os.walk(os.getcwd()):
                 annotation["gsd"] = gsd
                 annotation["uav"] = uav
                 annotation["camera"] = camera
-                annotation["altitude"] = altitude
-                annotation["height"] = height
+                annotation["drone_altitude"] = drone_altitude
+                annotation["drone_height"] = drone_height
+                annotation["bird_height"] = bird_height
                 annotation["latitude"] = latitude
                 annotation["longitude"] = longitude
                 annotation["datetime"] = datetime
@@ -289,6 +298,10 @@ for root, dirs, files in os.walk(os.getcwd()):
                 annotation["sensorheight"] = sensor_height
                 annotation["focallength"] = focal_length
                 try: del annotation["complete"]
+                except: pass
+                try: del annotation["altitude"]
+                except: pass
+                try: del annotation["height"]
                 except: pass
 
                 # save annotation

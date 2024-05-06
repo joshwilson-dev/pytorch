@@ -12,20 +12,22 @@ from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from torch.utils.tensorboard import SummaryWriter
 
 data_path = "data/balanced/"
+data_path = "C:/Users/uqjwil54/Desktop/balanced-2024_05_01"
 model_name = "FasterRCNN"
 weights = None
 backbone_name = "resnet101"
 trainable_backbone_layers = 5
 weights_backbone="ResNet101_Weights.IMAGENET1K_V1"
-n_classes = 94
+n_classes = 97
 batch_size = 3
 lr_steps = 4
-lr = 0.01
+lr = 0.001
 momentum = 0.9
 weight_decay = 1e-4
 gamma = 0.1
 patience = 5
 output_dir = "models/temp"
+output_dir = "C:/Users/uqjwil54/Desktop/models/temp"
 
 def main():
     # Setup

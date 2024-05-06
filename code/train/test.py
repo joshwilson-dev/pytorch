@@ -10,25 +10,34 @@ import evaluate
 import pandas as pd
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
-data_path = "data/balanced"
-output_dir = "models/bird_2024_04_04"
-dataset = "test"
+# redefining roi_heads to return scores for all classes
+# and filter the classes based on a supplied filter
+# from torchvision.models.detection import roi_heads
+# import custom_roi_heads
+# roi_heads.RoIHeads.postprocess_detections = custom_roi_heads.postprocess_detections
+# roi_heads.RoIHeads.forward = custom_roi_heads.forward
+
+data_path = "C:/Users/uqjwil54/Documents/Projects/DBBD/balanced-2024_05_01"
+output_dir = "C:/Users/uqjwil54/Documents/Projects/DBBD/models/bird-2024_05_01"
+dataset = "validation"
 img_folder = os.path.join(data_path, dataset)
 ann_file = os.path.join(data_path, "annotations", dataset + ".json")
 checkpoint_name = os.path.join(output_dir, "model.pth")
 model_name = "FasterRCNN"
 backbone_name = "resnet101"
-n_classes = 94
+n_classes = 97
 
 min_dim = 0
-max_dim = 525
-steps = 21
+max_dim = 5000
+steps = 10
 step_size = int((max_dim - min_dim)/steps)
 dims = range(min_dim, max_dim, step_size)
-areaRng = [[0, int(1e5**2)]] + [[dim, dim + step_size] for dim in dims]
-areaRngLbl = ['all'] + [str(dim[1]) for dim in areaRng]
-areaRng = [[0, int(1e5**2)]]
-areaRngLbl = ['all']
+areaRng = [[0, int(1e5**2)]] + [[dim, dim + step_size] for dim in dims] + [[max_dim, int(1e5**2)]]
+areaRngLbl = ['all'] + [str(dim[1]) for dim in areaRng[1:]]
+# areaRng = [[0, int(1e5**2)]]
+# areaRngLbl = ['all']
+print(areaRng)
+print(areaRngLbl)
 kwargs = {
     "iou_types": ['bbox'],
     "useCats": 0,
@@ -59,7 +68,7 @@ def save_eval(results):
                             result_dict['recall'].append(recall[i, c, a, m])
                             result_dict['scores'].append(scores[i, r, c, a, m])
                             result_dict['iou_type'].append(iou_type)
-    with open(os.path.join(output_dir, "eval-0.csv"), "w", newline='') as outfile:
+    with open(os.path.join(output_dir, "eval-validation-0.csv"), "w", newline='') as outfile:
         writer = csv.writer(outfile)
         writer.writerow(result_dict.keys())
         writer.writerows(zip(*result_dict.values()))
@@ -114,7 +123,6 @@ def save_evalImgs(results, dataset_test):
                     else:
                         iou_n = sum(entry['ious'][:, g] > params.iouThrs)
                         iou_max = max(entry['ious'][:, g])
-                        # iou_match = entry['dtIds'][max(enumerate(entry['ious'][g]), key=lambda x: x[1])[0]]
                         iou_match = ""
 
                     image_id_results = {
@@ -136,7 +144,7 @@ def save_evalImgs(results, dataset_test):
                     }
                     image_results.append(image_id_results)
     df = pd.DataFrame(image_results)
-    df.to_csv(os.path.join(output_dir, "evalimgs-0.csv"))
+    df.to_csv(os.path.join(output_dir, "evalimgs-validation-0.csv"))
     return
 
 def main():
@@ -165,6 +173,7 @@ def main():
 
     # Create the model
     print("Creating model")
+
     backbone = resnet_fpn_backbone(backbone_name = backbone_name, weights = None)
     model = torchvision.models.detection.__dict__[model_name](backbone = backbone, num_classes = n_classes)
     

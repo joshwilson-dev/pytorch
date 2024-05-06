@@ -1,3 +1,15 @@
+# Author:       Joshua P. Wilson
+# Description   Code to prepare images for training
+# Date:         14.04.2024
+
+# Install packages
+# pip install pandas==2.0.3
+# pip install shapely==2.0.3
+# pip install piexif==1.1.3
+# pip install pillow==10.2.0
+# pip install ortools==9.9.3963
+
+# Import packages
 import os
 import shutil
 import json
@@ -10,10 +22,6 @@ from ortools.sat.python import cp_model
 from shapely.geometry import Polygon
 import piexif
 
-#################
-#### Content ####
-#################
-
 # Set root and setup directories
 root = "data/"
 directories = ["train", "test", "annotations"]
@@ -24,106 +32,50 @@ for directory in directories:
     os.makedirs(path)
 
 # Define parameters
-min_instances = 0
-max_train_instances = 200
-max_test_instances = 100
+train_test_split = 0.7
+max_instances = 10000000
+max_train_instances = round(max_instances * train_test_split)
+max_test_instances = round(max_instances * (1 - train_test_split))
 min_overlap = 0.75
 target_gsd = 0.005
-fg_bg_ratio = 1.0
 target_patchsize = 800
+min_instances = 0
 
 # Create dataset to save annotation data to
 dataset_keys = [
-    "imagepath",
-    "uav", "height", "camera", "sensorwidth", "sensorheight", "focallength",
-    "imagewidth", "imageheight", "gsd", "latitude", "longitude",
+    "imagepath", "uav", "height", "camera", "sensorwidth", "sensorheight",
+    "focallength", "imagewidth", "imageheight", "gsd", "latitude", "longitude",
     "datetime", "patchcorners", "label", "points", "shapetype", "overlap",
-    "commonname", "class", "order", "family", "genus", "species", "pose", "age", "obscured",
-    "area"]
+    "commonname", "class", "order", "family", "genus", "species", "pose", "age",
+    "obscured", "area"]
 data = {k:[] for k in dataset_keys}
 
 
-def balance_instances(df, fg_max, fg_bg_ratio, ratio, buffer):
+def balanced_subsample(df, train_test_split, max_sample):
     # Create the model
     model = cp_model.CpModel()
     num_rows = df.shape[0]
     
-    # Create array containing row selection flags. True if row k is selected, False otherwise
+    # Create array containing row selection flags.
     row_selection = [model.NewBoolVar(f'row_{i}') for i in range(num_rows)]
 
-    # Get a list of species and poses
-    labels = [k for k in list(df.columns.levels[0].unique()) if 'name' in k] + ["background"]
-    
-    # Sort df so that columns with smallest sum appear first
-    df.loc['Total'] = df.sum()
-    df = df.sort_values(by = 'Total', axis = 1)
-    df = df.drop(labels = 'Total')
+    # Get a list of labels
+    labels = [k for k in list(df.columns.unique()) if 'name' in k]
 
     for label in labels:
-        label_df = df[label]
-        n_label_total = label_df.values.sum()
-        if label == "background":
-            # Sample the backgrounds to get ratio of foreground to background images, assuming 3 instances per image
-            n_label_upper = min((len(labels) - 1) * fg_max * ratio * fg_bg_ratio * 0.33, n_label_total)
-            n_label_lower = n_label_upper
-        else:
-            # Sample the minimum of fg_max, or the number of instances, per label
-            n_label_upper = round(min(n_label_total, fg_max) * ratio)
-            if n_label_total <= fg_max * buffer: n_label_lower = n_label_upper
-            else: n_label_lower = round(fg_max * ratio * buffer)
-        print("Label Limit: {}: {} of {}".format(label, n_label_upper, n_label_total))
-        print("Lower Limit: {}: {} of {}".format(label, n_label_lower, n_label_total))
-
-        # Sample poses as equally as possible within each label
-        unique_poses = list(label_df.columns.unique(level = 'pose'))
-        pose_remainder = n_label_lower
-        for pose in unique_poses:
-            pose_df = label_df[pose]
-            n_pose_total = pose_df.values.sum()
-            n_pose_sample = 0
-            index = unique_poses.index(pose)
-            req_avg = pose_remainder/(len(unique_poses) - index)
-            if n_pose_total * ratio <= req_avg:
-                n_pose_sample = n_pose_total * ratio
-            else:
-                n_pose_sample = req_avg
-            pose_remainder -= n_pose_sample
-            print("\t{}: {} of {}".format(pose, math.ceil(n_pose_sample), n_pose_total))
-            
-            # Sample areas as equally as possible within each pose
-            unique_areas = list(pose_df.columns.unique(level = 'area_bins'))
-            area_remainder = n_pose_sample
-            for area in unique_areas:
-                area_df = pose_df[area]
-                n_area_total = area_df.values.sum()
-                n_area_sample = 0
-                index = unique_areas.index(area)
-                req_avg = area_remainder/(len(unique_areas) - index)
-                if n_area_total * ratio <= req_avg:
-                    n_area_sample = math.ceil(n_area_total * ratio)
-                else:
-                    n_area_sample = math.ceil(req_avg)
-                area_remainder -= n_area_sample
-                print("\t\t\t{}: {} of {}".format(area, n_area_sample, n_area_total))
-                if label != "background":
-                    model.Add(df[label][pose][area].sum(axis=1).dot(row_selection) <= n_area_sample)
-                else:
-                    # Sample location as equally as possible within each pose 
-                    unique_locations = list(area_df.columns.unique(level = 'location'))
-                    loc_remainder = n_area_sample
-                    for location in unique_locations:
-                        loc_df = area_df[location]
-                        n_loc_total = loc_df.values.sum()
-                        n_loc_sample = 0
-                        index = unique_locations.index(location)
-                        req_avg = loc_remainder/(len(unique_locations) - index)
-                        if n_loc_total * ratio <= req_avg:
-                            n_loc_sample = math.ceil(n_loc_total * ratio)
-                        else:
-                            n_loc_sample = math.ceil(req_avg)
-                        loc_remainder -= n_loc_sample
-                        print("\t\t{}: {} of {}".format(location, math.ceil(n_loc_sample), n_loc_total))
-                        model.Add(df[label][pose][area][location].dot(row_selection) <= n_loc_sample)
+        count = df[label].sum()
+        min_sample = df[label][df[label] > 0].min()
+        if pd.isna(min_sample): min_sample = 0
+        max_split = math.ceil(train_test_split * count)
+        model.Add(df[label].dot(row_selection) <= max(min(max_sample, max_split), min_sample))
+        model.Add(df[label].dot(row_selection) >= min_sample)
+        print(label)
+        # print(count)
+        # print(min_sample)
+        # print(max_split)
+        # print(max_sample)
+        # print("<=", max(min(max_sample, max_split), min_sample))
+        # print(">=", min_sample)
 
     # Maximize the number of patches selected
     model.Maximize(sum(row_selection))
@@ -192,7 +144,7 @@ def save_dataset(train, test):
                 labelme_shapes = []
 
                 # Print progress
-                if coco_image_id % int(total_images / 10) == 0:
+                if coco_image_id % int(total_images / 5) == 0:
                     print("Saving {} image {} of {}".format(dir, coco_image_id, total_images))
 
                 # Crop the image to the patch
@@ -208,7 +160,7 @@ def save_dataset(train, test):
                 for index, annotation in annotations.reset_index(drop = True).iterrows():
                     label = annotation["label"]
 
-                    if label != "background":
+                    if "background" not in label:
                         # Get annotation data
                         points = annotation["points"]
                         overlap = annotation["overlap"]
@@ -317,12 +269,15 @@ for entry in os.scandir(os.path.join(root,"consolidated")):
         longitude = annotation["longitude"]
         uav = annotation["uav"]
         camera = annotation["camera"]
-        height = annotation["height"]
+        height = annotation["drone_height"]
         sensorwidth = annotation["sensorwidth"]
         sensorheight = annotation["sensorheight"]
         focallength = annotation["focallength"]
         datetime = annotation["datetime"]
 
+        # Create location feature
+        location = str(round(latitude, 1)) + ", " + str(round(longitude, 1))
+        
         # Determine the scale factor
         scale = target_gsd/gsd
         patchsize = target_patchsize * scale
@@ -459,7 +414,7 @@ for entry in os.scandir(os.path.join(root,"consolidated")):
                     data["longitude"].append(longitude)
                     data["datetime"].append(datetime)
                     data["patchcorners"].append(patchcorners)
-                    data["label"].append("background")
+                    data["label"].append("name: background - " + location)
                     data["commonname"].append("background")
                     data["class"].append("background")
                     data["order"].append("background")
@@ -478,14 +433,10 @@ for entry in os.scandir(os.path.join(root,"consolidated")):
 data = pd.DataFrame(data=data)
 data["dataset"] = "total"
 
-# Calculate location and area_cat
-bins = list(range(0, 4501, 1500)) + [1e10]
-data["area_bins"] = pd.cut(data['area'], bins).astype(str)
-data["location"] = data["latitude"].round(0).astype(str) + ", " + data["longitude"].round(0).astype(str)
-
 # Determine the total abundance of each class
 class_count = (
     data
+    # .query("label != 'background'")
     .query("overlap >= @min_overlap")
     .query("obscured == 'no'")
     .drop_duplicates(subset=['imagepath', 'points'])
@@ -499,27 +450,28 @@ data['count'] = data['label'].map(class_count)
 # Count the label instances per patch
 instances_per_patch = (
     data
+    # .query("label != 'background'")
     .query("overlap >= @min_overlap")
     .query("obscured == 'no'")
     .query("'unknown' not in label")
     .query("count >= @min_instances")
-    .groupby(['imagepath', 'patchcorners', 'label', 'pose', 'area_bins', 'location'])
+    .groupby(['imagepath', 'patchcorners', 'label'])
     .size()
     .reset_index(name='counts')
     .pivot_table(
         index=['imagepath', 'patchcorners'],
-        columns=['label', 'pose', 'area_bins', 'location'],
+        columns=['label'],
         values="counts",
         fill_value=0))
 
 # Generate the train dataset
-train = balance_instances(instances_per_patch.copy(), max_train_instances, fg_bg_ratio, 0.75, 1)
+train = balanced_subsample(instances_per_patch.copy(), train_test_split, max_train_instances)
 
 # Drop the train data from instances_per_patch
 instances_per_patch = instances_per_patch.drop(index = train)
 
-train = pd.DataFrame(list(train), columns=['imagepath', 'patchcorners'])
 # Convert train back into patch data
+train = pd.DataFrame(list(train), columns=['imagepath', 'patchcorners'])
 train = (
     pd.merge(data, train, indicator=True, how='left')
     .query('_merge=="both"')
@@ -529,10 +481,10 @@ train["dataset"] = 'train'
 train.name = 'train'
 n_train = len(train.drop_duplicates(['imagepath', 'patchcorners']))
 
-# Generate the test dataset
-test = balance_instances(instances_per_patch, max_test_instances, fg_bg_ratio, 1, 1)
-test = pd.DataFrame(list(test), columns=['imagepath', 'patchcorners'])
 # Convert test back into patch data
+# Generate the train dataset
+test = balanced_subsample(instances_per_patch.copy(), 1, max_test_instances)
+test = pd.DataFrame(list(test), columns=['imagepath', 'patchcorners'])
 test = (
     pd.merge(data, test, indicator=True, how='left')
     .query('_merge=="both"')
@@ -551,6 +503,7 @@ dataset = (
     pd.concat([train, test, data], ignore_index=True)
     .reset_index(drop = True))
 dataset.loc[dataset.dataset == "total", 'patchcorners'] = "NA"
+dataset.loc[dataset.dataset == "total", overlap] = 1
 dataset = dataset.drop_duplicates(subset=['imagepath', 'patchcorners', 'points'])
 dataset.to_csv(os.path.join(root, "balanced/annotations/dataset.csv"))
 

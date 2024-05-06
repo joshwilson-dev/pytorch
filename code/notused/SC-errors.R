@@ -9,23 +9,21 @@ renv::load("C:/Users/uqjwil54/Documents/Projects/venvs/DBBD")
 # Install required packages
 # install.packages("tidyverse")
 # install.packages("readxl")
-# install.packages("jsonlite")
 
 # Load required libraries
 library(tidyverse)
 library(readxl)
-library(jsonlite)
 
 # Clear the R environment
 rm(list = ls())
 
 # Import data from excel
-cocoevalimg <- read_excel(
-    path = "models/bird_2024_04_04/data.xlsx",
-    sheet = "ST3-cocoevalimg")
+root = "models/bird-2024_04_29/data.xlsx"
+cocoevalimg <- read_excel(path = root, sheet = "ST3-cocoevalimg")
 
 # Identify cause of error
 data <- cocoevalimg %>%
+    filter(aRng == "[0, 10000000000]") %>%
     group_by(Ids, image_id) %>%
     mutate(error = case_when(
         Matches > 0 ~ 'True Positive',
@@ -58,7 +56,11 @@ error_data <- data.frame()
 for (threshold in thresholds) {
     print(threshold)
     i <- data %>%
-        filter(category_id != -1) %>%
+        filter(
+            category_id == -1,
+            error == "False Negative Detection" |
+            error == "False Negative Classification" |
+            det_type == 'dt') %>%
         mutate(error = case_when(
             error == 'True Positive' &
             Scores < threshold ~
@@ -66,12 +68,14 @@ for (threshold in thresholds) {
             TRUE ~ error)) %>%
         filter(
             Scores >= threshold |
+            error == "False Negative Detection" |
             error == "False Negative Classification") %>%
         group_by(error) %>%
         summarise(count = n()) %>%
         mutate(score_thr = threshold) %>%
         filter(error != '', error != "True Positive") %>%
         mutate(proportion = count / sum(count))
+
     false <- i %>%
         summarise_if(is.numeric, sum) %>%
         mutate(error = "Total False Predictions", score_thr = threshold)
@@ -98,4 +102,4 @@ error_plot <- ggplot(
     theme_classic() +
     theme(legend.position = "bottom")
 
-ggsave("error.jpg", error_plot)
+ggsave("figures/f0-error.jpg", error_plot)

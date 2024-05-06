@@ -57,10 +57,17 @@ def evaluate(model, data_loader, device, **kwargs):
         model_time = time.time()
         outputs = model(images)
 
+        # if 'useCats' in kwargs:
+        #     if kwargs.get("useCats") == 0:
+        #         for i in range(len(outputs[0]['class_scores'])):
+        #             outputs[0]['scores'][i] = sum(outputs[0]['class_scores'][i])
+
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+
         model_time = time.time() - model_time
 
         res = {target["image_id"]: output for target, output in zip(targets, outputs)}
+
         evaluator_time = time.time()
         coco_evaluator.update(res)
         evaluator_time = time.time() - evaluator_time

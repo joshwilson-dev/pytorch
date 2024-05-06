@@ -60,7 +60,7 @@ classification_AP <- data %>%
     mutate(catId = -2)
 
 area_AP <- rbind(class_AP, classification_AP) %>%
-    merge(data_raw, index_to_class, by = 'catId') %>%
+    merge(index_to_class, by = 'catId') %>%
     mutate(area = as.double(str_extract(area, "\\d+(?!.*\\d)"))) %>%
     filter(area != 10000000000)
 

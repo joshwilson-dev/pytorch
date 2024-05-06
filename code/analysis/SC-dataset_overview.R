@@ -12,19 +12,25 @@ library(igraph)
 library(ggraph)
 library(rphylopic)
 library(readxl)
+library(maps)
 
 # Clear the R environment
 rm(list = ls())
 
 # Import data from excel
+root = "models/bird-2024_04_14/data.xlsx"
 dataset_raw <- read_excel(
-    path = "data/balanced/annotations/dataset.xlsx",
+    path = root,
     sheet = "ST1-dataset")
 
 #### Species Bias
 # Process data
 dataset <- dataset_raw %>%
-    filter(order != "background") %>%
+    filter(
+      overlap >= 0.75,
+      obscured == 'no',
+      species != 'unknown',
+      order != "background") %>%
     mutate(
         species = paste0(toupper(substring(genus, 1, 1)), ". ", species),
         species = paste(class, order, family, genus, species),
@@ -67,8 +73,13 @@ max_species = max(species$count_total)
 # Create the count for the leaves
 count <- distinct(rbind(order, family, genus, species)) %>%
     mutate(
+        count_test = case_when(is.na(count_test) ~ 0, T ~ count_test),
+        count_train = case_when(is.na(count_train) ~ 0, T ~ count_train),
+        count_total = case_when(is.na(count_total) ~ 0, T ~ count_total),
         count_total_per = count_total/max_species,
-        count_train_per = count_train/max_species)
+        count_test_per = count_test/max_species,
+        count_train_per = (count_test + count_train)/max_species)
+
 max_species = round(max_species/5000,1)*5000
 
 # Create the edges of dendrogram
@@ -83,7 +94,6 @@ vertices <- data.frame(to = unique(c(edges$from, edges$to))) %>%
     arrange(sort) %>%
     mutate(
         label = sapply(strsplit(to, "\\s+"), function(x) paste(tail(x, 2), collapse = " ")),
-        # label = paste0(label, ": ", count_total, " - ", count_train),
         group = edges$group[match(to, edges$to)])
 
 # Set up label angle and orientation
@@ -149,11 +159,15 @@ dendrogram <- (
     size = 4) +
   geom_node_arc_bar(
     aes(r0 = 1, r = 1 + (count_total_per**mod) * arcbarmax, filter = leaf),
-    fill = 'gray50',
+    fill = 'gray80',
     linewidth = 0.2) +
   geom_node_arc_bar(
     aes(r0 = 1, r = 1 + (count_train_per**mod) * arcbarmax, filter = leaf),
-    fill = 'gray30',
+    fill = 'gray60',
+    linewidth = 0.2) +
+  geom_node_arc_bar(
+    aes(r0 = 1, r = 1 + (count_test_per**mod) * arcbarmax, filter = leaf),
+    fill = 'gray40',
     linewidth = 0.2) +
   geom_node_arc_bar(
     aes(r0 = 1, r = 1 + arcbarmax, filter = leaf),
@@ -252,17 +266,21 @@ dendrogram <- (
 ggsave(filename = "figures/f5a-species_bias.jpg", plot = dendrogram)
 
 #### Pose bias
-pose_counts <- dataset_raw %>%
-    filter(
-        label != "background",
-        dataset != "test") %>%
+pose_counts <- dataset %>%
     group_by(pose, dataset) %>%
-    count()
+    count() %>%
+    pivot_wider(names_from = dataset, values_from = n) %>%
+    mutate(total = total - train - test) %>%
+    pivot_longer(!pose, names_to = 'dataset', values_to = 'count') %>%
+    mutate(dataset = factor(
+      dataset,
+      levels = c("total", "test", "train"),
+      ordered = TRUE))
 
-pose_bias <- ggplot(pose_counts, aes(x = pose, y = n, fill = dataset)) +
+pose_bias <- ggplot(pose_counts, aes(x = pose, y = count, fill = dataset)) +
     geom_bar(stat = "identity", colour = "black") +
     labs(x = "Pose", y = "Count", fill = "Dataset") +
-    scale_fill_manual(values = c("gray50", "gray30")) +
+    scale_fill_manual(values = c("gray80", "gray60", "gray40")) +
     theme_minimal() +
     theme(
         axis.title = element_text(size = 30),
@@ -284,7 +302,7 @@ age_counts <- dataset_raw %>%
 age_bias <- ggplot(age_counts, aes(x = age, y = n, fill = dataset)) +
     geom_bar(stat = "identity", colour = "black") +
     labs(x = "Age", y = "Count", fill = "Dataset") +
-    scale_fill_manual(values = c("gray50", "gray30")) +
+    scale_fill_manual(values = c("gray60", "gray40")) +
     theme_minimal() +
     theme(
         axis.title = element_text(size = 30),
@@ -295,9 +313,11 @@ age_bias <- ggplot(age_counts, aes(x = age, y = n, fill = dataset)) +
 ggsave(filename = "figures/f6d-age_bias.jpg", plot = age_bias)
 
 #### GSD bias
-gsd_breaks <- c(0, seq(0.002, 0.02, by = 0.002), Inf)
+gsd_breaks <- c(0, seq(2, 20, by = 2), Inf)
 gsd_counts <- dataset_raw %>%
-    mutate(gsd_cats = cut(gsd, breaks = gsd_breaks)) %>%
+    mutate(
+      gsd = gsd * 1000,
+      gsd_cats = cut(gsd, breaks = gsd_breaks)) %>%
     filter(
         label != "background",
         dataset != "test") %>%
@@ -306,8 +326,8 @@ gsd_counts <- dataset_raw %>%
 
 gsd_bias <- ggplot(gsd_counts, aes(x = gsd_cats, y = n, fill = dataset)) +
     geom_bar(stat = "identity", colour = "black") +
-    labs(x = "GSD [m/pix]", y = "Count", fill = "Dataset") +
-    scale_fill_manual(values = c("gray50", "gray30")) +
+    labs(x = "GSD [mm/pix]", y = "Count", fill = "Dataset") +
+    scale_fill_manual(values = c("gray60", "gray40")) +
     theme_minimal() +
     theme(
         axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
@@ -355,7 +375,7 @@ country_data <- merge(country_count, country_center, by = "country")
 world_map <- map_data("world")
 
 # Plot world map
-locaiton_bias <- ggplot() +
+location_bias <- ggplot() +
   geom_polygon(
     data = world_map,
     aes(x = long, y = lat, group = group),
@@ -365,23 +385,15 @@ locaiton_bias <- ggplot() +
   geom_point(
     data = country_data,
     aes(x = mean_longitude, y = mean_latitude, size = count, colour = dataset)) +
-  scale_colour_manual(values = c('gray30', 'gray50')) +
-  scale_size(range = c(3, 10)) +
-  geom_text(
-    data = filter(country_data, dataset == 'total'),
-    aes(x = mean_longitude + 20, y = mean_latitude + 4, label = count),
-    size = 3,
-    hjust = 1) +
-  geom_text(
-    data = filter(country_data, dataset == 'train'),
-    aes(x = mean_longitude + 22, y = mean_latitude + 4, label = paste(":", count)),
-    size = 3,
-    hjust = 0) +
-  theme_void() +
-  theme(legend.position = "none")
+  scale_colour_manual(values = c('gray40', 'gray60')) +
+  # scale_size(range = c(5, 15)) +
+  scale_size_continuous(
+    range = c(3, 20),
+    breaks = c(1250, 5000, 20000)) +
+  theme_void()
 
 # Save the plot
-ggsave(filename = "figures/f6a-location_bias.jpg", plot = locaiton_bias)
+ggsave(filename = "figures/f6a-location_bias.jpg", plot = location_bias)
 
 #### Number of images
 n_images <- dataset_raw %>%
