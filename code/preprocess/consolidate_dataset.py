@@ -1,9 +1,6 @@
 import os
 import shutil
 import json
-from PIL import Image
-import hashlib
-import piexif
 
 index_to_class = json.load(open("resources/index_to_class.json"))
 class_to_index = {value["name"]: key for key, value in index_to_class.items()}
@@ -16,6 +13,7 @@ if os.path.exists("consolidated"):
 os.makedirs("consolidated")
 
 # iterate through files in dir
+count = 0
 for root, dirs, files in os.walk(os.getcwd()):
     for file in files:
         if "fully annotated" in root or "backgrounds" in root:
@@ -28,19 +26,17 @@ for root, dirs, files in os.walk(os.getcwd()):
                 annotation = json.load(open(annotation_input_path))
                 image_input_name = annotation["imagePath"]
                 image_input_path = os.path.join(root, image_input_name)
-
-                # Calculate md5
-                image = Image.open(image_input_path)
-                md5 = hashlib.md5(image.tobytes()).hexdigest()
-
+                
                 # Output paths
-                annotation_output_name = md5 + '.json'
+                annotation_output_name = str(count) + '.json'
                 annotation_output_path = os.path.join("consolidated", annotation_output_name)
-                image_output_name = md5 + '.jpg'
+                image_output_name = str(count) + '.jpg'
                 image_output_path = os.path.join("consolidated", image_output_name)
+                count += 1
 
                 # Update annotation
                 annotation["imagePath"] = image_output_name
+                annotation["originalimagePath"] = image_input_name
                 for i in range(len(annotation["shapes"])):
                     label = json.loads(annotation["shapes"][i]["label"].replace("'", '"'))
                     if label["name"] != "bird":
@@ -63,10 +59,6 @@ for root, dirs, files in os.walk(os.getcwd()):
                 with open(annotation_output_path, 'w') as annotation_file:
                     annotation_file.write(annotation)
 
-                # Write original image path to exif comments
-                exif = piexif.load(image.info['exif'])
-                exif["0th"][piexif.ImageIFD.XPComment] = json.dumps(image_input_name).encode('utf-16le')
-                exif = piexif.dump(exif)
-
-                # Save image
-                image.save(image_output_path, exif = exif)
+                # Copy image
+                import shutil
+                shutil.copyfile(image_input_path, image_output_path)

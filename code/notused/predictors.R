@@ -18,13 +18,12 @@ library(readxl)
 rm(list = ls())
 
 # Import data from excel
-root <- "C:/Users/uqjwil54/Documents/Projects/DBBD/balanced-2024_05_01/model-2024_05_06/data.xlsx"
+root <- "C:/Users/uqjwil54/Documents/Projects/DBBD/2024_05_10/balanced/models/2024_05_13/data.xlsx"
 
-cocoeval <- read_excel(path = root, sheet = "ST2-cocoeval")
-
-dataset <- read_excel(path = root, sheet = "ST1-dataset")
-
-catId_to_class <- read_excel(path = root, sheet = "ST5-catId_to_class") %>%
+dataset <- read_excel(path = root, sheet = "TS2-dataset")
+cocoeval <- read_excel(path = root, sheet = "TS3-cocoeval")
+# cocoeval <- read_excel(path = root, sheet = "trial")
+catId_to_class <- read_excel(path = root, sheet = "TS6-catId_to_class") %>%
     mutate(class = str_to_title(paste(name, age, sep = " - "))) %>%
     select(catId, class, plumage)
 
@@ -34,6 +33,7 @@ pixel_bins = seq(0, 5000, by = by)
 AP <- cocoeval %>%
     filter(
         dataset == "test",
+        # dataset == "validation",
         iouType == "bbox",
         iouThr == 0.5,
         area != "[0, 10000000000]",
@@ -45,7 +45,7 @@ AP <- cocoeval %>%
         pixels = as.numeric(str_extract(area, "\\d+(?=\\])")),
         pixels = (2 * pixels - by)/2) %>%
     group_by(catId, pixels) %>%
-    summarise(AP = mean(precision), AP_sd = sd(precision), .groups = "drop") %>%
+    summarise(AP = mean(precision), .groups = "drop") %>%
     merge(catId_to_class, by = "catId")
 
 print(length(unique(AP$class)))
@@ -65,12 +65,10 @@ train <- dataset %>%
     filter(!is.na(pixels)) %>%
     group_by(class, pixels) %>%
     summarise(
-        train_locations = sum(),
         area_avg = mean(area * gsd**2),
         train_instances = n()) %>%
     merge(catId_to_class, by = "class")
 length(unique(train$class))
-
 
 # Number of similar classes based on size and colour
 similar_classes <- train %>%
@@ -89,12 +87,13 @@ train <- train %>%
 test <- dataset %>%
     filter(
         dataset == "test",
+        # dataset == "test" | dataset == "validation",
+        # dataset == "validation",
         obscured == "no",
         overlap >= 0.7,
         species != "unknown",
         species != "background") %>%
     mutate(
-        # area = case_when(gsd < 0.005 ~ area * (gsd/0.005)**2, TRUE ~ area),
         pose = case_when(pose == 'resting' ~ 1, T ~ 0),
         pixels = cut(area, pixel_bins, labels = FALSE) * by,
         pixels = (2 * pixels - by)/2,
@@ -113,18 +112,15 @@ performance <- AP %>%
     merge(train) %>%
     merge(test) %>%
     merge(similar_classes) %>%
-    filter(test_instances >= 3)
-    # filter(AP_sd > 0)
+    filter(test_instances > 1)
 
 length(unique(performance$class))
 
 # Fit beta regression model
 model <- glm(
-    # AP ~ train_locations + train_instances + pixel_avg + area_avg + plumage + resting_proportion + similar_classes,
-    AP ~ train_instances + pixel_avg + area_avg + plumage + similar_classes,
+    AP ~ train_instances + pixel_avg + area_avg + plumage + similar_classes + resting_proportion,
     data = performance,
     family = binomial(link = "logit"))
-    # weight = 1 / AP_sd)
 summary(model)
 
 # Perform backward selection using stepwise AIC
@@ -137,9 +133,9 @@ generate_plot <- function(predictor) {
         train_instances = mean(performance$train_instances),
         area_avg = mean(performance$area_avg),
         pixel_avg = mean(performance$pixel_avg),
-        similar_classes = mean(performance$pixel_avg),
+        similar_classes = mean(performance$similar_classes),
         resting_proportion = mean(performance$resting_proportion),
-        plumage = "brown")
+        plumage = "white-black")
     
     # Drop predictor column
     newdata <- select(newdata, -predictor)
@@ -174,23 +170,32 @@ generate_plot <- function(predictor) {
 
     # Create a dataframe with predictions
     predictions <- cbind(newdata, as.data.frame(AP_pred))
+    recomended_value <- predictions %>%
+        filter(AP_pred > max(predictions$AP_pred) * 0.95) %>%
+        arrange(AP_pred) %>%
+        slice(1) %>%
+        select(predictor)
+    print(paste("95% of maximum:", recomended_value))
 
     # Plot result
     if (predictor_type == "double" | predictor_type == "integer") {
         instances_plot <- ggplot(predictions, aes_string(x = predictor, y = "AP_pred")) +
-            geom_point(data = performance, aes_string(x = predictor, y = "AP")) +
+            geom_point(
+                data = performance,
+                aes_string(x = predictor, y = "AP"),
+                size = 0.5) +
             geom_line() +
             geom_ribbon(aes(ymin = lwr_ci, ymax = upr_ci), alpha = 0.5) +
             ylim(0, 1) +
             labs(
-                y = "Average Precision",
+                y = "Average precision",
                 x = str_to_sentence(sub("avg", "", sub("_", " ", predictor)))) +
             theme_classic()}
     
     else {
         instances_plot <- ggplot(predictions, aes_string(x = predictor, y = "AP_pred")) +
             geom_point(data = performance, aes_string(x = predictor, y = "AP"), size = 0.2) +
-            geom_point() +
+            geom_point(size = 0.5) +
             geom_errorbar(aes(ymin = lwr_ci, ymax = upr_ci)) +
             ylim(0, 1) +
             theme_classic() +
@@ -198,7 +203,7 @@ generate_plot <- function(predictor) {
     }
 
     filename = paste0("figures/analysis/", predictor, ".jpg")
-    ggsave(filename, instances_plot)
+    ggsave(filename, instances_plot, height = 3, width = 3)
 }
 
 generate_plot("train_instances")

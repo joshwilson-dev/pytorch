@@ -1,3 +1,7 @@
+# Title:        CS14 Custom ROI Heads
+# Description:  Adapted from torchvision.models.detection.roi_heads
+# Author:       Anonymous
+# Date:         05/06/2024
 import torch
 import torch.nn.functional as F
 from torchvision.ops import boxes as box_ops

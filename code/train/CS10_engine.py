@@ -1,18 +1,24 @@
+# Title:        CS10 Engine
+# Description:  Adapted from:
+#               https://github.com/pytorch/vision/blob/main/references/detection
+# Author:       Anonymous
+# Date:         05/06/2024
+
 import math
 import sys
 import time
 
 import torch
 import torchvision.models.detection.mask_rcnn
-import utils
-from coco_eval import CocoEvaluator
-from coco_utils import get_coco_api_from_dataset
+import CS9_utils
+from CS15_coco_eval import CocoEvaluator
+from CS12_coco_utils import get_coco_api_from_dataset
 
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
     model.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+    metric_logger = CS9_utils.MetricLogger(delimiter="  ")
+    metric_logger.add_meter("lr", CS9_utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     header = f"Epoch: [{epoch}]"
 
     lr_scheduler = None
@@ -32,7 +38,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
             losses = sum(loss for loss in loss_dict.values())
 
         # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = utils.reduce_dict(loss_dict)
+        loss_dict_reduced = CS9_utils.reduce_dict(loss_dict)
         losses_reduced = sum(loss for loss in loss_dict_reduced.values())
 
         loss_value = losses_reduced.item()
@@ -79,7 +85,7 @@ def evaluate(model, data_loader, device):
     torch.set_num_threads(1)
     cpu_device = torch.device("cpu")
     model.eval()
-    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger = CS9_utils.MetricLogger(delimiter="  ")
     header = "Test:"
 
     coco = get_coco_api_from_dataset(data_loader.dataset)

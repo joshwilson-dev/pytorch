@@ -121,15 +121,15 @@ uavs = {
     "M3E": "DJI Mavic 3 Enterprise"
 }
 
-root = "data/original/"
-
+root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBD/data/new/Olga Alexandrou/SPP drone photos_for Joshua Wilson/annotated/box"
+# root = "C:/Users/uqjwil54/Desktop/Trial/"
 new = False
 os.chdir(root)
 # iterate through files in dir
 count = 0
 for root, dirs, files in os.walk(os.getcwd()):
     for file in files:
-        if "fully annotated" in root or "background" in root:
+        # if "fully annotated" in root or "background" in root:
             if file.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
                 count += 1
                 if count % 100 == 0: print(count)

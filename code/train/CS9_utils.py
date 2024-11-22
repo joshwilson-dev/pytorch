@@ -1,3 +1,9 @@
+# Title:        CS9 Utils
+# Description:  Adapted from:
+#               https://github.com/pytorch/vision/blob/main/references/detection
+# Author:       Anonymous
+# Date:         05/06/2024
+
 import datetime
 import errno
 import os

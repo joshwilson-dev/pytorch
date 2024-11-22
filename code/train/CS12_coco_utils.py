@@ -1,9 +1,14 @@
+# Title:        CS12 COCO Utils
+# Description:  Adapted from:
+#               https://github.com/pytorch/vision/blob/main/references/detection
+# Author:       Anonymous
+# Date:         05/06/2024
 import os
 
 import torch
 import torch.utils.data
 import torchvision
-import transforms as T
+import CS11_transforms as T
 from pycocotools import mask as coco_mask
 from pycocotools.coco import COCO
 

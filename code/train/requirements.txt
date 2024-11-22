@@ -1,0 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cu118
+gradio==4.31.4
+ortools==9.9.3963
+pandas==2.0.3
+pillow==10.2.0
+pycocotools==2.0.7
+shapely==2.0.3
+tensorboard==2.14.0
+torch==2.2.1+cu118
+torchaudio==2.2.1+cu118
+torchvision==0.17.1+cu118

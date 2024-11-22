@@ -1,0 +1,866 @@
+{
+  "1": {
+    "name": "black-browed albatross",
+    "class": "aves",
+    "order": "procellariiformes",
+    "family": "diomedeidae",
+    "genus": "thalassarche",
+    "species": "melanophris",
+    "age": "adult"
+  },
+  "2": {
+    "name": "southern rockhopper penguin",
+    "class": "aves",
+    "order": "sphenisciformes",
+    "family": "spheniscidae",
+    "genus": "eudyptes",
+    "species": "chrysocome",
+    "age": "adult"
+  },
+  "3": {
+    "name": "grey heron",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "ardea",
+    "species": "cinerea",
+    "age": "adult"
+  },
+  "4": {
+    "name": "grey heron",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "ardea",
+    "species": "cinerea",
+    "age": "chick"
+  },
+  "5": {
+    "name": "black swan",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "cygnus",
+    "species": "atratus",
+    "age": "adult"
+  },
+  "6": {
+    "name": "australian pelican",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "pelecanidae",
+    "genus": "pelecanus",
+    "species": "conspicillatus",
+    "age": "adult"
+  },
+  "7": {
+    "name": "whooper swan",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "cygnus",
+    "species": "cygnus",
+    "age": "adult"
+  },
+  "8": {
+    "name": "masked lapwing",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "charadriidae",
+    "genus": "vanellus",
+    "species": "miles",
+    "age": "adult"
+  },
+  "9": {
+    "name": "domestic mallard",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "anas",
+    "species": "platyrhynchos",
+    "age": "adult"
+  },
+  "10": {
+    "name": "african openbill",
+    "class": "aves",
+    "order": "ciconiiformes",
+    "family": "ciconiidae",
+    "genus": "anastomus",
+    "species": "lamelligerus",
+    "age": "adult"
+  },
+  "11": {
+    "name": "pied stilt",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "recurvirostridae",
+    "genus": "himantopus",
+    "species": "leucocephalus",
+    "age": "adult"
+  },
+  "12": {
+    "name": "pacific black duck",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "anas",
+    "species": "superciliosa",
+    "age": "adult"
+  },
+  "13": {
+    "name": "hardhead",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "aythya",
+    "species": "australis",
+    "age": "adult"
+  },
+  "14": {
+    "name": "australian white ibis",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "threskiornithidae",
+    "genus": "threskiornis",
+    "species": "molucca",
+    "age": "adult"
+  },
+  "15": {
+    "name": "australasian swamphen",
+    "class": "aves",
+    "order": "gruiformes",
+    "family": "rallidae",
+    "genus": "porphyrio",
+    "species": "melanotus",
+    "age": "adult"
+  },
+  "16": {
+    "name": "muscovy duck",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "cairina",
+    "species": "moschata",
+    "age": "adult"
+  },
+  "17": {
+    "name": "magpie-lark",
+    "class": "aves",
+    "order": "passeriformes",
+    "family": "monarchidae",
+    "genus": "grallina",
+    "species": "cyanoleuca",
+    "age": "adult"
+  },
+  "18": {
+    "name": "rainbow bee-eater",
+    "class": "aves",
+    "order": "coraciiformes",
+    "family": "meropidae",
+    "genus": "merops",
+    "species": "ornatus",
+    "age": "adult"
+  },
+  "19": {
+    "name": "little corella",
+    "class": "aves",
+    "order": "psittaciformes",
+    "family": "cacatuidae",
+    "genus": "cacatua",
+    "species": "sanguinea",
+    "age": "adult"
+  },
+  "20": {
+    "name": "australian wood duck",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "chenonetta",
+    "species": "jubata",
+    "age": "adult"
+  },
+  "21": {
+    "name": "common tern",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "sterna",
+    "species": "hirundo",
+    "age": "adult"
+  },
+  "22": {
+    "name": "pied oystercatcher",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "haematopodidae",
+    "genus": "haematopus",
+    "species": "longirostris",
+    "age": "adult"
+  },
+  "23": {
+    "name": "silver gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "chroicocephalus",
+    "species": "novaehollandiae",
+    "age": "adult"
+  },
+  "24": {
+    "name": "lesser black-backed gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "larus",
+    "species": "fuscus",
+    "age": "adult"
+  },
+  "25": {
+    "name": "european herring gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "larus",
+    "species": "argentatus",
+    "age": "adult"
+  },
+  "26": {
+    "name": "white stork",
+    "class": "aves",
+    "order": "ciconiiformes",
+    "family": "ciconiidae",
+    "genus": "ciconia",
+    "species": "ciconia",
+    "age": "adult"
+  },
+  "27": {
+    "name": "gull-billed tern",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "gelochelidon",
+    "species": "nilotica",
+    "age": "adult"
+  },
+  "28": {
+    "name": "great cormorant",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "phalacrocoracidae",
+    "genus": "phalacrocorax",
+    "species": "carbo",
+    "age": "adult"
+  },
+  "29": {
+    "name": "aleutian tern",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "onychoprion",
+    "species": "aleuticus",
+    "age": "adult"
+  },
+  "30": {
+    "name": "dusky moorhen",
+    "class": "aves",
+    "order": "gruiformes",
+    "family": "rallidae",
+    "genus": "gallinula",
+    "species": "tenebrosa",
+    "age": "adult"
+  },
+  "31": {
+    "name": "rock dove",
+    "class": "aves",
+    "order": "columbiformes",
+    "family": "columbidae",
+    "genus": "columba",
+    "species": "livia",
+    "age": "adult"
+  },
+  "32": {
+    "name": "noisy miner",
+    "class": "aves",
+    "order": "passeriformes",
+    "family": "meliphagidae",
+    "genus": "manorina",
+    "species": "melanocephala",
+    "age": "adult"
+  },
+  "33": {
+    "name": "great egret",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "ardea",
+    "species": "alba",
+    "age": "adult"
+  },
+  "34": {
+    "name": "grey teal",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "anas",
+    "species": "gracilis",
+    "age": "adult"
+  },
+  "35": {
+    "name": "little grebe",
+    "class": "aves",
+    "order": "podicipediformes",
+    "family": "podicipedidae",
+    "genus": "tachybaptus",
+    "species": "ruficollis",
+    "age": "adult"
+  },
+  "36": {
+    "name": "eurasian coot",
+    "class": "aves",
+    "order": "gruiformes",
+    "family": "rallidae",
+    "genus": "fulica",
+    "species": "atra",
+    "age": "adult"
+  },
+  "37": {
+    "name": "black-necked stilt",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "recurvirostridae",
+    "genus": "himantopus",
+    "species": "mexicanus",
+    "age": "adult"
+  },
+  "38": {
+    "name": "torresian crow",
+    "class": "aves",
+    "order": "passeriformes",
+    "family": "corvidae",
+    "genus": "corvus",
+    "species": "orru",
+    "age": "adult"
+  },
+  "39": {
+    "name": "pink-eared duck",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "malacorhynchus",
+    "species": "membranaceus",
+    "age": "adult"
+  },
+  "40": {
+    "name": "bar-tailed godwit",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "scolopacidae",
+    "genus": "limosa",
+    "species": "lapponica",
+    "age": "adult"
+  },
+  "41": {
+    "name": "great knot",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "scolopacidae",
+    "genus": "calidris",
+    "species": "tenuirostris",
+    "age": "adult"
+  },
+  "42": {
+    "name": "royal spoonbill",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "threskiornithidae",
+    "genus": "platalea",
+    "species": "regia",
+    "age": "adult"
+  },
+  "43": {
+    "name": "white-faced heron",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "egretta",
+    "species": "novaehollandiae",
+    "age": "adult"
+  },
+  "44": {
+    "name": "australasian darter",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "anhingidae",
+    "genus": "anhinga",
+    "species": "novaehollandiae",
+    "age": "adult"
+  },
+  "45": {
+    "name": "australian pelican",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "pelecanidae",
+    "genus": "pelecanus",
+    "species": "conspicillatus",
+    "age": "chick"
+  },
+  "46": {
+    "name": "western cattle egret",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "bubulcus",
+    "species": "ibis",
+    "age": "adult"
+  },
+  "47": {
+    "name": "welcome swallow",
+    "class": "aves",
+    "order": "passeriformes",
+    "family": "hirundinidae",
+    "genus": "hirundo",
+    "species": "neoxena",
+    "age": "adult"
+  },
+  "48": {
+    "name": "common crane",
+    "class": "aves",
+    "order": "gruiformes",
+    "family": "gruidae",
+    "genus": "grus",
+    "species": "grus",
+    "age": "adult"
+  },
+  "49": {
+    "name": "gentoo penguin",
+    "class": "aves",
+    "order": "sphenisciformes",
+    "family": "spheniscidae",
+    "genus": "pygoscelis",
+    "species": "papua",
+    "age": "adult"
+  },
+  "50": {
+    "name": "yellow-billed spoonbill",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "threskiornithidae",
+    "genus": "platalea",
+    "species": "flavipes",
+    "age": "adult"
+  },
+  "51": {
+    "name": "chinstrap penguin",
+    "class": "aves",
+    "order": "sphenisciformes",
+    "family": "spheniscidae",
+    "genus": "pygoscelis",
+    "species": "antarcticus",
+    "age": "adult"
+  },
+  "52": {
+    "name": "chinstrap penguin",
+    "class": "aves",
+    "order": "sphenisciformes",
+    "family": "spheniscidae",
+    "genus": "pygoscelis",
+    "species": "antarcticus",
+    "age": "chick"
+  },
+  "53": {
+    "name": "caspian tern",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "hydroprogne",
+    "species": "caspia",
+    "age": "adult"
+  },
+  "54": {
+    "name": "brolga",
+    "class": "aves",
+    "order": "gruiformes",
+    "family": "gruidae",
+    "genus": "antigone",
+    "species": "rubicunda",
+    "age": "adult"
+  },
+  "55": {
+    "name": "magpie goose",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anseranatidae",
+    "genus": "anseranas",
+    "species": "semipalmata",
+    "age": "adult"
+  },
+  "56": {
+    "name": "reed cormorant",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "phalacrocoracidae",
+    "genus": "microcarbo",
+    "species": "africanus",
+    "age": "adult"
+  },
+  "57": {
+    "name": "chaco eagle",
+    "class": "aves",
+    "order": "accipitriformes",
+    "family": "accipitridae",
+    "genus": "buteogallus",
+    "species": "coronatus",
+    "age": "adult"
+  },
+  "58": {
+    "name": "white-necked heron",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "ardea",
+    "species": "pacifica",
+    "age": "adult"
+  },
+  "59": {
+    "name": "little black cormorant",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "phalacrocoracidae",
+    "genus": "phalacrocorax",
+    "species": "sulcirostris",
+    "age": "adult"
+  },
+  "60": {
+    "name": "western grebe",
+    "class": "aves",
+    "order": "podicipediformes",
+    "family": "podicipedidae",
+    "genus": "aechmophorus",
+    "species": "occidentalis",
+    "age": "adult"
+  },
+  "61": {
+    "name": "american avocet",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "recurvirostridae",
+    "genus": "recurvirostra",
+    "species": "americana",
+    "age": "adult"
+  },
+  "62": {
+    "name": "african darter",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "anhingidae",
+    "genus": "anhinga",
+    "species": "rufa",
+    "age": "adult"
+  },
+  "63": {
+    "name": "african spoonbill",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "threskiornithidae",
+    "genus": "platalea",
+    "species": "alba",
+    "age": "adult"
+  },
+  "64": {
+    "name": "african darter",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "anhingidae",
+    "genus": "anhinga",
+    "species": "rufa",
+    "age": "chick"
+  },
+  "65": {
+    "name": "african spoonbill",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "threskiornithidae",
+    "genus": "platalea",
+    "species": "alba",
+    "age": "chick"
+  },
+  "66": {
+    "name": "pacific reef heron",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "egretta",
+    "species": "sacra",
+    "age": "adult"
+  },
+  "67": {
+    "name": "straw-necked ibis",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "threskiornithidae",
+    "genus": "threskiornis",
+    "species": "spinicollis",
+    "age": "adult"
+  },
+  "68": {
+    "name": "intermediate egret",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "ardea",
+    "species": "intermedia",
+    "age": "adult"
+  },
+  "69": {
+    "name": "eurasian whimbrel",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "scolopacidae",
+    "genus": "numenius",
+    "species": "phaeopus",
+    "age": "adult"
+  },
+  "70": {
+    "name": "european herring gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "larus",
+    "species": "argentatus",
+    "age": "juvenile"
+  },
+  "71": {
+    "name": "chilean flamingo",
+    "class": "aves",
+    "order": "phoenicopteriformes",
+    "family": "phoenicopteridae",
+    "genus": "phoenicopterus",
+    "species": "chilensis",
+    "age": "adult"
+  },
+  "72": {
+    "name": "chilean flamingo",
+    "class": "aves",
+    "order": "phoenicopteriformes",
+    "family": "phoenicopteridae",
+    "genus": "phoenicopterus",
+    "species": "chilensis",
+    "age": "juvenile"
+  },
+  "73": {
+    "name": "australian pied cormorant",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "phalacrocoracidae",
+    "genus": "phalacrocorax",
+    "species": "varius",
+    "age": "adult"
+  },
+  "74": {
+    "name": "australasian grebe",
+    "class": "aves",
+    "order": "podicipediformes",
+    "family": "podicipedidae",
+    "genus": "tachybaptus",
+    "species": "novaehollandiae",
+    "age": "adult"
+  },
+  "75": {
+    "name": "mediterranean gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "ichthyaetus",
+    "species": "melanocephalus",
+    "age": "adult"
+  },
+  "76": {
+    "name": "mediterranean gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "ichthyaetus",
+    "species": "melanocephalus",
+    "age": "chick"
+  },
+  "77": {
+    "name": "comb-crested jacana",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "jacanidae",
+    "genus": "irediparra",
+    "species": "gallinacea",
+    "age": "adult"
+  },
+  "78": {
+    "name": "reed cormorant",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "phalacrocoracidae",
+    "genus": "microcarbo",
+    "species": "africanus",
+    "age": "chick"
+  },
+  "79": {
+    "name": "pied avocet",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "recurvirostridae",
+    "genus": "recurvirostra",
+    "species": "avosetta",
+    "age": "adult"
+  },
+  "80": {
+    "name": "brown skua",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "stercorariidae",
+    "genus": "stercorarius",
+    "species": "antarcticus",
+    "age": "adult"
+  },
+  "81": {
+    "name": "african sacred ibis",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "threskiornithidae",
+    "genus": "threskiornis",
+    "species": "aethiopicus",
+    "age": "adult"
+  },
+  "82": {
+    "name": "pied butcherbird",
+    "class": "aves",
+    "order": "passeriformes",
+    "family": "artamidae",
+    "genus": "cracticus",
+    "species": "nigrogularis",
+    "age": "adult"
+  },
+  "83": {
+    "name": "greylag goose",
+    "class": "aves",
+    "order": "anseriformes",
+    "family": "anatidae",
+    "genus": "anser",
+    "species": "anser",
+    "age": "adult"
+  },
+  "84": {
+    "name": "african openbill",
+    "class": "aves",
+    "order": "ciconiiformes",
+    "family": "ciconiidae",
+    "genus": "anastomus",
+    "species": "lamelligerus",
+    "age": "chick"
+  },
+  "85": {
+    "name": "australian magpie",
+    "class": "aves",
+    "order": "passeriformes",
+    "family": "artamidae",
+    "genus": "gymnorhina",
+    "species": "tibicen",
+    "age": "adult"
+  },
+  "86": {
+    "name": "great egret",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "ardea",
+    "species": "alba",
+    "age": "chick"
+  },
+  "87": {
+    "name": "black-necked stork",
+    "class": "aves",
+    "order": "ciconiiformes",
+    "family": "ciconiidae",
+    "genus": "ephippiorhynchus",
+    "species": "asiaticus",
+    "age": "adult"
+  },
+  "88": {
+    "name": "black-necked stork",
+    "class": "aves",
+    "order": "ciconiiformes",
+    "family": "ciconiidae",
+    "genus": "ephippiorhynchus",
+    "species": "asiaticus",
+    "age": "juvenile"
+  },
+  "89": {
+    "name": "yellow-billed stork",
+    "class": "aves",
+    "order": "ciconiiformes",
+    "family": "ciconiidae",
+    "genus": "mycteria",
+    "species": "ibis",
+    "age": "adult"
+  },
+  "90": {
+    "name": "yellow-billed stork",
+    "class": "aves",
+    "order": "ciconiiformes",
+    "family": "ciconiidae",
+    "genus": "mycteria",
+    "species": "ibis",
+    "age": "chick"
+  },
+  "91": {
+    "name": "lesser black-backed gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "larus",
+    "species": "fuscus",
+    "age": "juvenile"
+  },
+  "92": {
+    "name": "african darter",
+    "class": "aves",
+    "order": "suliformes",
+    "family": "anhingidae",
+    "genus": "anhinga",
+    "species": "rufa",
+    "age": "juvenile"
+  },
+  "93": {
+    "name": "striated heron",
+    "class": "aves",
+    "order": "pelecaniformes",
+    "family": "ardeidae",
+    "genus": "butorides",
+    "species": "striata",
+    "age": "adult"
+  },
+  "94": {
+    "name": "franklins gull",
+    "class": "aves",
+    "order": "charadriiformes",
+    "family": "laridae",
+    "genus": "leucophaeus",
+    "species": "pipixcan",
+    "age": "adult"
+  },
+  "95": {
+    "name": "black-necked grebe",
+    "class": "aves",
+    "order": "podicipediformes",
+    "family": "podicipedidae",
+    "genus": "podiceps",
+    "species": "nigricollis",
+    "age": "adult"
+  },
+  "96": {
+    "name": "black-necked grebe",
+    "class": "aves",
+    "order": "podicipediformes",
+    "family": "podicipedidae",
+    "genus": "podiceps",
+    "species": "nigricollis",
+    "age": "juvenile"
+  }
+}

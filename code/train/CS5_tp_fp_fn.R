@@ -1,14 +1,8 @@
-# Title:        
-# Description:  
-# Author:       Joshua P. Wilson
-# Date:         14/02/2024
-
-# Load environment
-renv::load("C:/Users/uqjwil54/Documents/Projects/venvs/DBBD")
-
-# Install required packages
-# install.packages("tidyverse")
-# install.packages("readxl")
+# Title:        CS5 Basic Performance Analysis
+# Description:  Determines the true positives, false positive, and false
+#               negatives for the network on both test and validation sets.
+# Author:       Anonymous
+# Date:         05/06/2024
 
 # Load required libraries
 library(tidyverse)
@@ -18,16 +12,22 @@ library(readxl)
 rm(list = ls())
 
 # Import data from excel
-root = "models/bird-2024_04_29/data.xlsx"
-cocoevalimg <- read_excel(path = root, sheet = "ST3-cocoevalimg")
-catId_to_class <- read_excel(path = root, sheet = "ST5-catId_to_class") %>%
+root <- "Supporting Tables TS1-6.xlsx"
+cocoevalimg <- read_excel(path = root, sheet = "TS4-cocoevalimg")
+catId_to_class <- read_excel(path = root, sheet = "TS6-catId_to_class") %>%
     mutate(class = paste(name, "-", age)) %>%
     select(class, catId) %>%
-    rbind(data.frame(class = c("classification", "detection"), catId = c(-2, -1)))
+    rbind(data.frame(
+        class = c("classification", "detection"),
+        catId = c(-2, -1)))
 
 # Calculate performance metrics at threshold
 data <- cocoevalimg %>%
-    filter(area == "[0, 10000000000]", dataset == 'test') %>%
+    filter(
+        iouThrs == 0.5,
+        maxDet == 100,
+        area == "[0, 10000000000]",
+        dataset == 'validation') %>%
     mutate(error = case_when(
         Matches > 0 ~ 'TP',
         det_type == 'gt' ~ 'FN',
@@ -78,9 +78,10 @@ best <- performance %>%
     group_by(class) %>%
     arrange(F) %>%
     slice(1) %>%
+    select(class, TP, FP, FN, score, F1, GT) %>%
     mutate(
-        class = str_to_title(class),
-        across(where(is.numeric), round, 2)) %>%
+        across(where(is.numeric), round, 2),
+        class = str_to_title(class)) %>%
     arrange(desc(F1))
 
-write.csv(best, "best.csv")
+write.csv(best, "best_validation.csv")

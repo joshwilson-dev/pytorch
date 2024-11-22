@@ -1,10 +1,16 @@
 /data
 /models
+/model
 /paper
 /resources
 /figures
 /images
 /outputs
+/demos
+/code/train/demos
+/code/train/renv
+/code/train/AS2_model.pth
+/code/train/Supporting Tables TS1-6.xlsx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,3 +1,9 @@
+# Title:        CS11 Transforms
+# Description:  Adapted from:
+#               https://github.com/pytorch/vision/blob/main/references/detection
+# Author:       Anonymous
+# Date:         05/06/2024
+
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch

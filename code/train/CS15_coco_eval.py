@@ -1,3 +1,8 @@
+# Title:        CS15 COCO Eval
+# Description:  Adapted from:
+#               https://github.com/pytorch/vision/blob/main/references/detection
+# Author:       Anonymous
+# Date:         05/06/2024
 import copy
 import io
 from contextlib import redirect_stdout
@@ -5,10 +10,10 @@ from contextlib import redirect_stdout
 import numpy as np
 import pycocotools.mask as mask_util
 import torch
-import utils
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
+import CS9_utils
 
 class CocoEvaluator:
     def __init__(self, coco_gt, iou_types):
@@ -155,8 +160,8 @@ def convert_to_xywh(boxes):
 
 
 def merge(img_ids, eval_imgs):
-    all_img_ids = utils.all_gather(img_ids)
-    all_eval_imgs = utils.all_gather(eval_imgs)
+    all_img_ids = CS9_utils.all_gather(img_ids)
+    all_eval_imgs = CS9_utils.all_gather(eval_imgs)
 
     merged_img_ids = []
     for p in all_img_ids:

@@ -2,7 +2,8 @@ import os
 import json
 from PIL import Image
 
-root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBD/data/original/joshua_wilson/2024_02_23-1620-bishops_marsh/backgrounds"
+# root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/DBBS/Surveys/2024-03-12_1546_Adams Beach/T4"
+root = "C:/Users/uqjwil54/OneDrive - The University of Queensland/Events/DEMO/Seven Mile Lagoon/SML-2024_10_24/Subset/background"
 os.chdir(root)
 # iterate through files in dir
 for root, dirs, files in os.walk(os.getcwd()):

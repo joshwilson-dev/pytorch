@@ -1,9 +1,15 @@
+# Title:        CS13 Evaluate
+# Description:  Adapted from:
+#               https://github.com/pytorch/vision/blob/main/references/detection
+# Author:       Anonymous
+# Date:         05/06/2024
 import time
 
 import torch
-import utils
-from coco_eval import CocoEvaluator
-from coco_utils import get_coco_api_from_dataset
+
+import CS9_utils
+from CS15_coco_eval import CocoEvaluator
+from CS12_coco_utils import get_coco_api_from_dataset
 
 @torch.inference_mode()
 def evaluate(model, data_loader, device, **kwargs):
@@ -12,7 +18,7 @@ def evaluate(model, data_loader, device, **kwargs):
     torch.set_num_threads(1)
     cpu_device = torch.device("cpu")
     model.eval()
-    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger = CS9_utils.MetricLogger(delimiter="  ")
     header = "Test:"
 
     coco = get_coco_api_from_dataset(data_loader.dataset)

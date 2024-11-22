@@ -18,19 +18,21 @@ library(maps)
 rm(list = ls())
 
 # Import data from excel
-root = "models/bird-2024_04_14/data.xlsx"
+root <- "C:/Users/uqjwil54/Documents/Projects/DBBD/2024_05_10/models/temp/data.xlsx"
 dataset_raw <- read_excel(
     path = root,
-    sheet = "ST1-dataset")
+    sheet = "TS2-dataset")
 
-#### Species Bias
+#### Species Bias ####
 # Process data
 dataset <- dataset_raw %>%
     filter(
-      overlap >= 0.75,
+      overlap >= 0.7,
       obscured == 'no',
+      dataset != "test",
+      dataset != "validation",
       species != 'unknown',
-      order != "background") %>%
+      species != "background") %>%
     mutate(
         species = paste0(toupper(substring(genus, 1, 1)), ". ", species),
         species = paste(class, order, family, genus, species),
@@ -43,7 +45,7 @@ order <- dataset %>%
     group_by(class, order, dataset) %>%
     summarise(count = n(), .groups = "drop") %>%
     pivot_wider(names_from = dataset, values_from = count, names_prefix = "count_") %>%
-    mutate(group = "aves") %>%
+    mutate(group = order) %>%
     rename(from = class, to = order)
 
 # Add links between order and family
@@ -51,34 +53,32 @@ family <- dataset %>%
     group_by(order, family, dataset) %>%
     summarise(count = n(), .groups = "drop") %>%
     pivot_wider(names_from = dataset, values_from = count, names_prefix = "count_") %>%
-    mutate(group = family) %>%
+    mutate(group = order) %>%
     rename(from = order, to = family)
 
 # Add links between family and genus
 genus <- dataset %>%
-    group_by(family, genus, dataset) %>%
+    group_by(order, family, genus, dataset) %>%
     summarise(count = n(), .groups = "drop") %>%
     pivot_wider(names_from = dataset, values_from = count, names_prefix = "count_") %>%
-    mutate(group = family) %>%
-    rename(from = family, to = genus)
+    rename(group = order, from = family, to = genus)
 
 # Add links between genus and species
 species <- dataset %>%
-    group_by(family, genus, species, dataset) %>%
+    group_by(order, genus, commonname, dataset) %>%
     summarise(count = n(), .groups = "drop") %>%
     pivot_wider(names_from = dataset, values_from = count, names_prefix = "count_") %>%
-    rename(group = family, from = genus, to = species)
+    rename(group = order, from = genus, to = commonname) %>%
+    mutate(to = str_to_title(to))
 max_species = max(species$count_total)
 
 # Create the count for the leaves
 count <- distinct(rbind(order, family, genus, species)) %>%
     mutate(
-        count_test = case_when(is.na(count_test) ~ 0, T ~ count_test),
         count_train = case_when(is.na(count_train) ~ 0, T ~ count_train),
         count_total = case_when(is.na(count_total) ~ 0, T ~ count_total),
-        count_total_per = count_total/max_species,
-        count_test_per = count_test/max_species,
-        count_train_per = (count_test + count_train)/max_species)
+        percentage_total = count_total/max_species,
+        percentage_train = count_train/max_species)
 
 max_species = round(max_species/5000,1)*5000
 
@@ -112,11 +112,11 @@ vertices$start <- 2 * pi * (vertices$id - 1) / n_leaves
 vertices$end <- vertices$start + 2 * pi / n_leaves
 
 # Add phylopic position
-# Calculate the number of families in each order
+# Calculate the number of species in each order
 groupsize <- dataset %>%
-  group_by(family) %>%
+  group_by(order) %>%
   summarize(groupsize = n_distinct(species)) %>%
-  rename(to = family)
+  rename(to = order)
 
 # Determine angle of each order group, convert to x and y to paste phylopic
 vertices <- vertices %>%
@@ -125,8 +125,8 @@ vertices <- vertices %>%
   mutate(groupsize_lag = lag(groupsize, default = 0)) %>%
   mutate(csum_gsl = cumsum(ifelse(is.na(groupsize_lag), 0, groupsize_lag))) %>%
   mutate(phylopic_angle = (csum_gsl + groupsize / 2) * 2 * pi / n_leaves) %>%
-  mutate(phylopic_x = 0.9 * sin(phylopic_angle)) %>%
-  mutate(phylopic_y = 0.9 * cos(phylopic_angle))
+  mutate(phylopic_x = 3.9 * sin(phylopic_angle)) %>%
+  mutate(phylopic_y = 3.9 * cos(phylopic_angle))
 
 # Create circle points for 100% and 50% arcbars
 arcbarmax = 1.2
@@ -139,7 +139,9 @@ circles <- data.frame(
   x3 = cos(seq(0, 2 * pi, length.out = 100)) * (1 + arcbarmax/(max_species/(max_species/100))**mod),
   y3 = sin(seq(0, 2 * pi, length.out = 100)) * (1 + arcbarmax/(max_species/(max_species/100))**mod),
   x4 = cos(seq(0, 2 * pi, length.out = 100)) * (1 + arcbarmax/(max_species/(max_species/1000))**mod),
-  y4 = sin(seq(0, 2 * pi, length.out = 100)) * (1 + arcbarmax/(max_species/(max_species/1000))**mod))
+  y4 = sin(seq(0, 2 * pi, length.out = 100)) * (1 + arcbarmax/(max_species/(max_species/1000))**mod),
+  x5 = cos(seq(0, 2 * pi, length.out = 100)) * 3.5,
+  y5 = sin(seq(0, 2 * pi, length.out = 100)) * 3.5)
 
 # Create a graph object
 mygraph <- graph_from_data_frame(edges, vertices = vertices)
@@ -147,26 +149,28 @@ mygraph <- graph_from_data_frame(edges, vertices = vertices)
 # Make the plot
 dendrogram <- (
   ggraph(mygraph, layout = "dendrogram", circular = TRUE) +
-  geom_edge_diagonal(colour = "black") +
+  geom_edge_diagonal(width = 0.3) +
   geom_node_text(
     aes(
-        x = x * (1.05 + arcbarmax),
-        y = y * (1.05 + arcbarmax),
+        x = x * (1.1 + arcbarmax),
+        y = y * (1.1 + arcbarmax),
         filter = leaf,
         angle = angle,
         label = label,
         hjust = hjust),
-    size = 4) +
+    size = 2) +
   geom_node_arc_bar(
-    aes(r0 = 1, r = 1 + (count_total_per**mod) * arcbarmax, filter = leaf),
-    fill = 'gray80',
-    linewidth = 0.2) +
-  geom_node_arc_bar(
-    aes(r0 = 1, r = 1 + (count_train_per**mod) * arcbarmax, filter = leaf),
+    aes(
+      r0 = 1,
+      r = 1 + (percentage_total**mod) * arcbarmax,
+      filter = leaf),
     fill = 'gray60',
     linewidth = 0.2) +
   geom_node_arc_bar(
-    aes(r0 = 1, r = 1 + (count_test_per**mod) * arcbarmax, filter = leaf),
+    aes(
+      r0 = 1,
+      r = 1 + (percentage_train**mod) * arcbarmax,
+      filter = leaf),
     fill = 'gray40',
     linewidth = 0.2) +
   geom_node_arc_bar(
@@ -191,96 +195,79 @@ dendrogram <- (
     aes(x = x3, y = y3),
     linetype = "dashed",
     linewidth = 0.2) +
-  # Add circle to show 25% arcbars
-  geom_path(
-    data = circles,
-    aes(x = x4, y = y4),
-    linetype = "dashed",
-    linewidth = 0.2) +
+  # Add circle to show order groups
+  # geom_path(
+  #   data = circles,
+  #   aes(x = x5, y = y5),
+  #   linewidth = 0.2) +
+  # Add text
   geom_node_text(
     aes(x = 0, y = (1 + arcbarmax/(max_species/(max_species/1))**mod)),
-    label = as.character(max_species), size = 4) +
+    label = as.character(max_species), size = 3) +
   geom_node_text(
     aes(x = 0, y = (1 + arcbarmax/(max_species/(max_species/10))**mod)),
-    label = as.character(max_species/10), size = 4) +
+    label = as.character(max_species/10), size = 3) +
   geom_node_text(
     aes(x = 0, y = (1 + arcbarmax/(max_species/(max_species/100))**mod)),
-    label = as.character(max_species/100), size = 4) +
-  geom_node_text(
-    aes(x = 0, y = (1 + arcbarmax/(max_species/(max_species/1000))**mod)),
-    label = as.character(max_species/1000), size = 4) +
+    label = as.character(max_species/100), size = 3) +
+  # geom_node_text(
+  #   aes(x = 0, y = (1 + arcbarmax/(max_species/(max_species/1000))**mod)),
+  #   label = as.character(max_species/1000), size = 3) +
   geom_node_text(
     aes(x = 0, y = 1.0),
-    label = "0", size = 4) +
+    label = "0", size = 3) +
   theme_void() +
   expand_limits(
-    x = c(-(1.7 + arcbarmax), 1.7 + arcbarmax),
-    y = c(-(1.7 + arcbarmax), 1.7 + arcbarmax)))
+    x = c(-(3 + arcbarmax), 3 + arcbarmax),
+    y = c(-(3 + arcbarmax), 3 + arcbarmax)))
 
-# phylopic_uuid <- list(
-# "aves accipitriformes accipitridae" = "93e8bd48-f8e0-457a-8551-670f2684b7f0",
-# "aves anseriformes anatidae" = "cf522e02-35cc-44f5-841c-0e642987c2e4",
-# "aves anseriformes anseranatidae" = "e470e9bc-869f-46f7-885a-cac1dc724b32",
-# "aves charadriiformes charadriidae" = "69575d6b-4e9e-42d4-a4fc-2888b87384c8",
-# "aves charadriiformes haematopodidae" = "65ed3e2d-38f5-421f-976c-be4df6ac73fa",
-# "aves charadriiformes jacanidae" = "bf5fe2c5-1247-4ed9-93e2-d5af255ec462",
-# "aves charadriiformes laridae" = "d7c59a44-774f-4191-8623-07c77ca77851",
-# "aves charadriiformes recurvirostridae" = "1c9fb51b-5615-40fb-a2a8-f201fd61ac02",
-# "aves charadriiformes scolopacidae" = "1c9fb51b-5615-40fb-a2a8-f201fd61ac02",
-# "aves charadriiformes stercorariidae" = "b828fa30-3190-4198-b304-d6599c1e2ae1",
-# "aves ciconiiformes ciconiidae" = "b415196d-355a-408d-a73b-1567c87a1721",
-# "aves columbiformes columbidae" = "3644ff17-3cd1-4c98-afdb-91113d4e2cca",
-# "aves coraciiformes meropidae" = "086d2b94-f13c-47ab-9538-c9b71d97f934",
-# "aves gruiformes gruidae" = "7f02b605-c87b-4ec2-9e14-011f813c23a4",
-# "aves gruiformes rallidae" = "d5194798-0b50-4a79-8b3d-e6efe468c5ab",
-# "aves passeriformes artamidae" = "ac6920cc-61a3-4d33-86b6-e8da07011f87",
-# "aves passeriformes corvidae" = "2db31c7c-b0a9-460f-807e-da9181f21cf6",
-# "aves passeriformes hirundinidae" = "cf38be70-f0a8-4a47-b387-e797ec16c7c1",
-# "aves passeriformes meliphagidae" = "d42be981-b1ba-494a-8047-7ec93d0db31d",
-# "aves passeriformes monarchidae" = "87d6a89a-9044-49cd-b708-086c847735f2",
-# "aves pelecaniformes ardeidae" = "a2a64845-7c7b-4e4a-b1f5-8fd03b673796",
-# "aves pelecaniformes pelecanidae" = "2a168f51-4016-4a32-ba72-64a53bee31ca",
-# "aves pelecaniformes threskiornithidae" = "ad11bfb7-4ab8-47d2-8e25-0e11ab947e20",
-# "aves phoenicopteriformes phoenicopteridae" = "a1244226-f2c2-41dc-b113-f1c6545958ce",
-# "aves podicipediformes podicipedidae" = "deba1d91-daa8-40a6-8d48-7a9f295bc662",
-# "aves procellariiformes diomedeidae" = "4e4df08e-d11a-4250-869c-44ce8ab72dd7",
-# "aves psittaciformes cacatuidae" = "2236b809-b54a-45a2-932f-47b2ca4b8b7e",
-# "aves sphenisciformes spheniscidae" = "dcd56e52-c6e0-4831-824f-c65bee8875ca",
-# "aves suliformes anhingidae" = "c8d80b8f-a6b3-4d4f-9f2d-ca6bea033d2c",
-# "aves suliformes phalacrocoracidae" = "21a3420c-8d7a-4bd2-8ff7-b89fe7f5add5"
-# )
+# Add phylopic per order
+phylopic_uuid <- list(
+  "aves accipitriformes" = "b1c1370b-08cf-4c5e-b390-8fd552f60689",
+  "aves anseriformes" = "5e338b5b-0f48-4bf6-b737-90b12876a49b",
+  "aves charadriiformes" = "145b43ea-a9d7-4a98-8764-2ebefd6cefe8",
+  "aves ciconiiformes" = "8691fc60-e7f2-4a69-af65-08461defac6b",
+  "aves columbiformes" = "cbe76bdb-5a89-4577-8472-6af7c2052d70",
+  "aves coraciiformes" = "611eeb9e-e167-44b5-bebd-8675d0831d37",
+  "aves gruiformes" = "cd5ca1a2-b0a9-4ce9-b163-5c004e327d9d",
+  "aves passeriformes" = "70a769d7-ae01-495e-a56d-7889cafdeb88",
+  "aves pelecaniformes" = "2a168f51-4016-4a32-ba72-64a53bee31ca",
+  "aves phoenicopteriformes" = "a1244226-f2c2-41dc-b113-f1c6545958ce",
+  "aves podicipediformes" = "deba1d91-daa8-40a6-8d48-7a9f295bc662",
+  "aves procellariiformes" = "4e4df08e-d11a-4250-869c-44ce8ab72dd7",
+  "aves psittaciformes" = "2236b809-b54a-45a2-932f-47b2ca4b8b7e",
+  "aves sphenisciformes" = "dcd56e52-c6e0-4831-824f-c65bee8875ca",
+  "aves suliformes" = "21a3420c-8d7a-4bd2-8ff7-b89fe7f5add5")
 
-# Add phylopics
-# for (i in seq(nrow(vertices))) {
-#     name <- vertices[i + 1, "to"]
-#     if (name %in% names(phylopic_uuid)) {
-#         index <- which(names(phylopic_uuid) == name)
-#         x_pos <- vertices[i + 1, "phylopic_x"]
-#         y_pos <- vertices[i + 1, "phylopic_y"]
-#         dendrogram <- (
-#             dendrogram +
-#             add_phylopic(uuid = phylopic_uuid[[name]], x = x_pos, y = y_pos, ysize = 0.1))}
-# }
-
+for (i in seq(nrow(vertices))) {
+    name <- vertices[i + 1, "to"]
+    if (name %in% names(phylopic_uuid)) {
+        index <- which(names(phylopic_uuid) == name)
+        x_pos <- vertices[i + 1, "phylopic_x"]
+        y_pos <- vertices[i + 1, "phylopic_y"]
+        dendrogram <- (
+            dendrogram +
+            add_phylopic(uuid = phylopic_uuid[[name]], x = x_pos, y = y_pos, ysize = 0.4))}
+}
 # Save plot
-ggsave(filename = "figures/f5a-species_bias.jpg", plot = dendrogram)
+ggsave(filename = "figures/f5-species_bias.jpg", plot = dendrogram)
 
 #### Pose bias
 pose_counts <- dataset %>%
     group_by(pose, dataset) %>%
     count() %>%
     pivot_wider(names_from = dataset, values_from = n) %>%
-    mutate(total = total - train - test) %>%
+    mutate(total = total - train) %>%
     pivot_longer(!pose, names_to = 'dataset', values_to = 'count') %>%
     mutate(dataset = factor(
       dataset,
-      levels = c("total", "test", "train"),
+      levels = c("total", "train"),
       ordered = TRUE))
 
 pose_bias <- ggplot(pose_counts, aes(x = pose, y = count, fill = dataset)) +
     geom_bar(stat = "identity", colour = "black") +
-    labs(x = "Pose", y = "Count", fill = "Dataset") +
-    scale_fill_manual(values = c("gray80", "gray60", "gray40")) +
+    labs(x = "Behaviour", y = "Count", fill = "Dataset") +
+    scale_fill_manual(values = c("gray60", "gray40")) +
     theme_minimal() +
     theme(
         axis.title = element_text(size = 30),
@@ -291,15 +278,14 @@ pose_bias <- ggplot(pose_counts, aes(x = pose, y = count, fill = dataset)) +
 ggsave(filename = "figures/f6b-pose_bias.jpg", plot = pose_bias)
 
 #### Age bias
-age_counts <- dataset_raw %>%
-    filter(
-        age != "unknown",
-        label != "background",
-        dataset != "test") %>%
+age_counts <- dataset %>%
     group_by(age, dataset) %>%
-    count()
+    count() %>%
+    pivot_wider(names_from = dataset, values_from = n) %>%
+    mutate(total = total - train) %>%
+    pivot_longer(!age, names_to = 'dataset', values_to = 'count')
 
-age_bias <- ggplot(age_counts, aes(x = age, y = n, fill = dataset)) +
+age_bias <- ggplot(age_counts, aes(x = age, y = count, fill = dataset)) +
     geom_bar(stat = "identity", colour = "black") +
     labs(x = "Age", y = "Count", fill = "Dataset") +
     scale_fill_manual(values = c("gray60", "gray40")) +
@@ -314,17 +300,17 @@ ggsave(filename = "figures/f6d-age_bias.jpg", plot = age_bias)
 
 #### GSD bias
 gsd_breaks <- c(0, seq(2, 20, by = 2), Inf)
-gsd_counts <- dataset_raw %>%
+gsd_counts <- dataset %>%
     mutate(
       gsd = gsd * 1000,
       gsd_cats = cut(gsd, breaks = gsd_breaks)) %>%
-    filter(
-        label != "background",
-        dataset != "test") %>%
     group_by(gsd_cats, dataset) %>%
-    count()
+    count() %>%
+    pivot_wider(names_from = dataset, values_from = n) %>%
+    mutate(total = total - train) %>%
+    pivot_longer(!gsd_cats, names_to = 'dataset', values_to = 'count')
 
-gsd_bias <- ggplot(gsd_counts, aes(x = gsd_cats, y = n, fill = dataset)) +
+gsd_bias <- ggplot(gsd_counts, aes(x = gsd_cats, y = count, fill = dataset)) +
     geom_bar(stat = "identity", colour = "black") +
     labs(x = "GSD [mm/pix]", y = "Count", fill = "Dataset") +
     scale_fill_manual(values = c("gray60", "gray40")) +
@@ -342,19 +328,26 @@ ggsave(filename = "figures/f6c-gsd_bias.jpg", plot = gsd_bias)
 # Reverse geocode to get country for each latitude and longitude
 location_data <- dataset_raw %>%
   mutate(
+    location = paste0(round(latitude, 0), ", ", round(longitude, 0)),
     country = map.where(database = "world", longitude, latitude),
     country = case_when(
-      location == "-62.0, -59.0" ~ "Antarctica",
-      location == "-51.0, -61.0" ~ "Falkland Islands",
-      location == "-28.0, 153.0" ~ "Australia",
-      location == "52.0, 143.0" ~ "Russia",
-      location == "54.0, 14.0" ~ "Poland",
-      location == "56.0, 8.0" ~ "Denmark",
-      location == "-27.0, 153.0" ~ "Australia",
-      location == "59.0, -140.0" ~ "Alaska",
-      location == "-63.0, -61.0" ~ "Antarctica",
+      location == "-62, -59" ~ "Antarctica",
+      location == "-51, -61" ~ "Falkland Islands",
+      location == "-28, 153" ~ "Australia",
+      location == "52, 143" ~ "Russia",
+      location == "54, 14" ~ "Poland",
+      location == "56, 8" ~ "Denmark",
+      location == "-27, 153" ~ "Australia",
+      location == "59, -140" ~ "Alaska",
+      location == "-63, -61" ~ "Antarctica",
       TRUE ~ country)) %>%
-  filter(label != "background", dataset != "test")
+  filter(
+    species != "background",
+    species != "unknown",
+    overlap >= 0.7,
+    obscured == 'no',
+    dataset != "test",
+    dataset != "validation")
 
 # Filter and count instances per country
 country_count <- location_data %>%
@@ -385,12 +378,14 @@ location_bias <- ggplot() +
   geom_point(
     data = country_data,
     aes(x = mean_longitude, y = mean_latitude, size = count, colour = dataset)) +
-  scale_colour_manual(values = c('gray40', 'gray60')) +
-  # scale_size(range = c(5, 15)) +
+  scale_colour_manual(values = c('gray40', 'gray60'), name = 'Dataset') +
   scale_size_continuous(
-    range = c(3, 20),
-    breaks = c(1250, 5000, 20000)) +
-  theme_void()
+    range = c(3, 15),
+    breaks = c(1250, 5000, 10000),
+    name = "Count") +
+  theme_void() +
+  theme(legend.position = c(0.15, 0.4)) +
+  guides(colour = guide_legend(override.aes = list(size=10)))
 
 # Save the plot
 ggsave(filename = "figures/f6a-location_bias.jpg", plot = location_bias)
@@ -406,3 +401,47 @@ n_instances <- dataset_raw %>%
     filter(label != "background", dataset == "total") %>%
     distinct(imagepath, points) %>%
     nrow()
+
+#### Number of species
+n_species <- dataset_raw %>%
+    filter(label != "background", dataset == "total") %>%
+    mutate(species = paste(genus, species)) %>%
+    distinct(species) %>%
+    nrow()
+
+#### Images camera
+images_per_camera <- dataset_raw %>%
+    filter(dataset == "total") %>%
+    distinct(imagepath, camera) %>%
+    group_by(camera) %>%
+    summarise(count = n())
+  
+### images per species
+class_bias_data <- dataset %>%
+  group_by(dataset, order, commonname, age) %>%
+  count() %>%
+  pivot_wider(names_from = dataset, values_from = n) %>%
+  filter(total >= 10) %>%
+  mutate(
+    total = log(total),
+    train = log(train)) %>%
+  mutate(total = total - train, class = paste0(commonname, " - ", age)) %>%
+  ungroup() %>%
+  select(-commonname, -age) %>%
+  pivot_longer(!class, names_to = 'dataset', values_to = 'count')
+
+options(scipen = 999)
+breaks <- log(c(5, 50, 500, 5000))
+labels <- c(5, 50, 500, 5000)
+
+class_bias <- ggplot(class_bias_data, aes(x = class, y = count, fill = dataset)) +
+    geom_bar(stat = "identity", colour = "black") +
+    labs(x = "", y = "Count", fill = "Dataset") +
+    scale_fill_manual(values = c("gray60", "gray40")) +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_y_continuous(breaks = breaks, labels = labels)
+ggsave(filename = "figures/f6a-class-bias-simple.jpg", plot = class_bias, height = 5, width = 10)
+
+class_order <- c(unique(class_bias_data$class))
+performance$class <- factor(performance$class, levels = class_order, ordered = TRUE)
